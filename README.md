@@ -1,5 +1,4 @@
-<img width="1446" height="1655" alt="534339414-3c1df2d8-77fc-4d04-bc94-5c76d5416370 (1)" src="https://github.com/user-attachments/assets/72c0cfb9-da68-4688-aea1-53fdb99a3470" />
-
+<img width="6000" height="1713" alt="534339414-3c1df2d8-77fc-4d04-bc94-5c76d5416370" src="https://github.com/user-attachments/assets/f8c6bfa2-218c-42bc-af8e-c8393ed6fbd3" />
 ___
 
 🔁 The next generation of Student Accountability systems. Tracking utilizing cutting-edge technology, NFC and Fingerprint Scanning.
