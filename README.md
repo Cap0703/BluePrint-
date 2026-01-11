@@ -2,4 +2,4 @@
 
 ___
 
-The next generation of Student Accountability systems. Tracking utilizing cutting-edge technology, NFC and Fingerprint Scanning.
+🔁 The next generation of Student Accountability systems. Tracking utilizing cutting-edge technology, NFC and Fingerprint Scanning.
