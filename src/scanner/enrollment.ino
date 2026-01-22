@@ -81,6 +81,7 @@ uint8_t readnumber(void) {
 void loop()                     // run over and over again
 {
   Serial.println("Ready to enroll a fingerprint!");
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, FINGERPRINT_LED_GREEN);
   Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
   id = readnumber();
   if (id == 0) {// ID #0 not allowed, try again!
@@ -96,7 +97,7 @@ uint8_t getFingerprintEnroll() {
 
   int p = -1;
   Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, FINGERPRINT_LED_BLUE);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
     switch (p) {
