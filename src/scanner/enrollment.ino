@@ -42,30 +42,13 @@ uint8_t id;
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial);  // For Yun/Leo/Micro/Zero/...
   delay(100);
   Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
   // set the data rate for the sensor serial port
- mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
-
-  if (finger.verifyPassword()) {
-    Serial.println("Found fingerprint sensor!");
-  } else {
-    Serial.println("Did not find fingerprint sensor :(");
-    while (1) { delay(1); }
-  }
-
-  Serial.println(F("Reading sensor parameters"));
-  finger.getParameters();
-  Serial.print(F("Status: 0x")); Serial.println(finger.status_reg, HEX);
-  Serial.print(F("Sys ID: 0x")); Serial.println(finger.system_id, HEX);
-  Serial.print(F("Capacity: ")); Serial.println(finger.capacity);
-  Serial.print(F("Security level: ")); Serial.println(finger.security_level);
-  Serial.print(F("Device address: ")); Serial.println(finger.device_addr, HEX);
-  Serial.print(F("Packet len: ")); Serial.println(finger.packet_len);
-  Serial.print(F("Baud rate: ")); Serial.println(finger.baud_rate);
+  mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
 }
 
 uint8_t readnumber(void) {
@@ -81,8 +64,9 @@ uint8_t readnumber(void) {
 void loop()                     // run over and over again
 {
   Serial.println("Ready to enroll a fingerprint!");
-  Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
-  id = readnumber();
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, FINGERPRINT_LED_RED);
+  //Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
+  id = 1;
   if (id == 0) {// ID #0 not allowed, try again!
      return;
   }
@@ -96,7 +80,7 @@ uint8_t getFingerprintEnroll() {
 
   int p = -1;
   Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, FINGERPRINT_LED_BLUE);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
     switch (p) {
@@ -142,6 +126,8 @@ uint8_t getFingerprintEnroll() {
       return p;
   }
 
+
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   Serial.println("Remove finger");
   delay(2000);
   p = 0;
@@ -150,6 +136,7 @@ uint8_t getFingerprintEnroll() {
   }
   Serial.print("ID "); Serial.println(id);
   p = -1;
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
   Serial.println("Place same finger again");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
@@ -173,7 +160,7 @@ uint8_t getFingerprintEnroll() {
   }
 
   // OK success!
-
+finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   p = finger.image2Tz(2);
   switch (p) {
     case FINGERPRINT_OK:
@@ -197,6 +184,7 @@ uint8_t getFingerprintEnroll() {
   }
 
   // OK converted!
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 400, FINGERPRINT_LED_RED);
   Serial.print("Creating model for #");  Serial.println(id);
 
   p = finger.createModel();
