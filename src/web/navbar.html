@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Left Side Navigation Bar</title>
+    <style>
+        .navbar {
+            width: 200px;
+            background: linear-gradient(135deg, #4272a2, #1a2530);
+            color: white;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .navbar-header {
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar-header h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .navbar-menu {
+            list-style: none;
+            padding: 15px 0;
+        }
+
+        .navbar-item {
+            padding: 0;
+            margin: 5px 15px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .navbar-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            color: #b0b7c3;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+        }
+
+        .navbar-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .navbar-link.active {
+            background-color: #3498db;
+            color: white;
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .navbar-icon {
+            margin-right: 12px;
+            font-size: 1.2rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        .navbar-text {
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="navbar-header">
+            <h2>BlueCard</h2>
+        </div>
+        <ul class="navbar-menu">
+            <li class="navbar-item">
+                <a href="/" class="navbar-link" data-page="dashboard">
+                    <span class="navbar-icon">🏠</span>
+                    <span class="navbar-text">Dashboard</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/profile" class="navbar-link" data-page="profile">
+                    <span class="navbar-icon">👤</span>
+                    <span class="navbar-text">Profile</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/analytics" class="navbar-link" data-page="analytics">
+                    <span class="navbar-icon">📊</span>
+                    <span class="navbar-text">Analytics</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/master_logs" class="navbar-link" data-page="master_logs">
+                    <span class="navbar-icon">📜</span>
+                    <span class="navbar-text">Master Logs</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/calendar" class="navbar-link" data-page="calendar">
+                    <span class="navbar-icon">📅</span>
+                    <span class="navbar-text">Calendar</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/map" class="navbar-link" data-page="map">
+                    <span class="navbar-icon">🗺️</span>
+                    <span class="navbar-text">Current Class Map</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/lookup" class="navbar-link" data-page="lookup">
+                    <span class="navbar-icon">🔍</span>
+                    <span class="navbar-text">Student Lookup</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/scanners" class="navbar-link" data-page="scanners">
+                    <span class="navbar-icon">📷</span>
+                    <span class="navbar-text">Connected Scanners</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/settings" class="navbar-link" data-page="settings">
+                    <span class="navbar-icon">⚙️</span>
+                    <span class="navbar-text">Settings</span>
+                </a>
+            </li>
+            <li class="navbar-item">
+                <a href="/security" class="navbar-link" data-page="security">
+                    <span class="navbar-icon">🔒</span>
+                    <span class="navbar-text">Security</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</body>
+</html>
