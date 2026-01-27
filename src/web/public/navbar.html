@@ -73,6 +73,13 @@
         .navbar-text {
             font-size: 0.95rem;
         }
+
+        .navbar-icon img {
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+            filter: brightness(0) invert(1); /* optional, makes icons white */
+        }
     </style>
 </head>
 <body>
@@ -83,61 +90,61 @@
         <ul class="navbar-menu">
             <li class="navbar-item">
                 <a href="/" class="navbar-link" data-page="dashboard">
-                    <span class="navbar-icon">🏠</span>
+                    <span class="navbar-icon"><img src="navbar-icon/dashboard.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Dashboard</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/profile" class="navbar-link" data-page="profile">
-                    <span class="navbar-icon">👤</span>
+                    <span class="navbar-icon"><img src="navbar-icon/profile.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Profile</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/analytics" class="navbar-link" data-page="analytics">
-                    <span class="navbar-icon">📊</span>
+                    <span class="navbar-icon"><img src="navbar-icon/analytics.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Analytics</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/master_logs" class="navbar-link" data-page="master_logs">
-                    <span class="navbar-icon">📜</span>
+                    <span class="navbar-icon"><img src="navbar-icon/master_logs.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Master Logs</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/calendar" class="navbar-link" data-page="calendar">
-                    <span class="navbar-icon">📅</span>
+                    <span class="navbar-icon"><img src="navbar-icon/calendar.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Calendar</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/map" class="navbar-link" data-page="map">
-                    <span class="navbar-icon">🗺️</span>
+                    <span class="navbar-icon"><img src="navbar-icon/current_class_map.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Current Class Map</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/lookup" class="navbar-link" data-page="lookup">
-                    <span class="navbar-icon">🔍</span>
+                    <span class="navbar-icon"><img src="navbar-icon/student_lookup.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Student Lookup</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/scanners" class="navbar-link" data-page="scanners">
-                    <span class="navbar-icon">📷</span>
+                    <span class="navbar-icon"><img src="navbar-icon/connected_scanners.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Connected Scanners</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/settings" class="navbar-link" data-page="settings">
-                    <span class="navbar-icon">⚙️</span>
+                    <span class="navbar-icon"><img src="navbar-icon/settings.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Settings</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/security" class="navbar-link" data-page="security">
-                    <span class="navbar-icon">🔒</span>
+                    <span class="navbar-icon"><img src="navbar-icon/security.png" alt="Settings Icon"></span>
                     <span class="navbar-text">Security</span>
                 </a>
             </li>
