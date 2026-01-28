@@ -11,18 +11,23 @@
             color: white;
             height: 100vh;
             position: fixed;
-            left: 0;
+            left: -190px;
             top: 0;
             overflow-y: auto;
             transition: all 0.3s ease;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
             z-index: 1000;
+            border-radius: 0 10px 10px 0;
         }
 
         .navbar-header {
             padding: 20px;
             text-align: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar:hover, .navbar.open {
+            left: 0px;
         }
 
         .navbar-header h2 {
@@ -72,20 +77,21 @@
 
         .navbar-text {
             font-size: 0.95rem;
+            margin-left: 5%;
         }
 
         .navbar-icon img {
             width: 30px;
             height: 30px;
             object-fit: contain;
-            filter: brightness(0) invert(1); /* optional, makes icons white */
+            filter: brightness(0) invert(1);
         }
     </style>
 </head>
 <body>
     <nav class="navbar" id="navbar">
         <div class="navbar-header">
-            <h2>BlueCard</h2>
+            <h2>BluePrint™</h2>
         </div>
         <ul class="navbar-menu">
             <li class="navbar-item">
@@ -148,7 +154,31 @@
                     <span class="navbar-text">Security</span>
                 </a>
             </li>
+            <li class="navbar-item">
+                <button class="nav-toggle" id="navToggle">=</button>
+            </li>
         </ul>
     </nav>
+    <script>
+        // Highlight active link based on current page
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentPage = window.location.pathname.split('/').pop() || 'dashboard';
+            const links = document.querySelectorAll('.navbar-link');
+
+            links.forEach(link => {
+                if (link.getAttribute('data-page') === currentPage) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Toggle navbar visibility
+        const navToggle = document.getElementById('navToggle');
+        const navbar = document.getElementById('navbar');
+
+        navToggle.addEventListener('click', () => {
+            navbar.classList.toggle('open');
+        });
+    </script>
 </body>
 </html>
