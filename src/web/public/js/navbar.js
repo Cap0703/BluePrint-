@@ -49,10 +49,9 @@ function setActiveNavLink() {
     const cleanCurrentPath = currentPath.replace(/\/$/, '');
     const cleanLinkPath = linkPath.replace(/\/$/, '');
     
-    if (cleanCurrentPath === cleanLinkPath || 
-        (cleanLinkPath !== '/' && cleanCurrentPath.startsWith(cleanLinkPath)) ||
-        (cleanCurrentPath === '' && cleanLinkPath === '/')) {
-      link.classList.add('active');
+    if (cleanCurrentPath === cleanLinkPath) {
+      link.classList.add("active");
     }
+
   });
 }
