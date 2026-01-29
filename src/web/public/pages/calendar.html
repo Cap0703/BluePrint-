@@ -6,16 +6,225 @@
         <title>Calendar - BluePrint™</title>
         <link rel="stylesheet" href="/css/style.css">
         <script defer src="/js/navbar.js"></script>
+        <script defer src="/js/calendar.js"></script>
         <link rel="icon" type="image/png" href="/images/favicon.png">
+            <style>
+        .calendar-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .calendar-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .refresh-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 0.7rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .refresh-btn:hover {
+            background: #155bb5;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .cache-status {
+            color: #b0b7c3;
+            font-size: 0.9rem;
+        }
+        
+        .events-container {
+            margin-top: 1rem;
+        }
+        
+        .event-item {
+            padding: 1.2rem;
+            margin: 0.8rem 0;
+            background: rgba(208, 208, 208, 0.9);
+            border-left: 4px solid #1a73e8;
+            border-radius: 8px;
+            color: #333;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .event-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .event-item.no-current-period {
+            background: rgba(246, 139, 110, 0.9);
+            border-left: 4px solid #e53935;
+            color: #333;
+        }
+        
+        .event-time {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        .event-title {
+            color: #333;
+            font-size: 1.1rem;
+        }
+        
+        .current-period {
+            background: rgba(100, 255, 66, 0.9);
+            border-left-color: #28a745;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .loading {
+            text-align: center;
+            color: #b0b7c3;
+            padding: 2rem;
+        }
+        
+        .error {
+            text-align: center;
+            color: #e53935;
+            padding: 1.5rem;
+            background: rgba(229, 57, 53, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #e53935;
+        }
+        
+        .date-display {
+            color: #e0e0e0;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+    </style>
     </head>
     <body>
         <div id="navbar"></div>
 
-        <main>
-            <h1>Calendar</h1>
-            <div id="calendarContainer">
-                <!-- Calendar will be dynamically loaded here -->
+    <div class="main-content">
+        <div class="calendar-container">
+            <div class="card">
+                <div class="card-header">
+                    <h1>📅 Bell Schedule</h1>
+                    <div class="calendar-controls">
+                        <div class="cache-status" id="cacheStatus">Loading cache status...</div>
+                        <button class="refresh-btn" onclick="loadCalendarEvents()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C7.58 4 4.01 7.58 4.01 12C4.01 16.42 7.58 20 12 20C15.73 20 18.84 17.45 19.73 14H17.65C16.83 16.33 14.61 18 12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C13.66 6 15.14 6.69 16.22 7.78L13 11H20V4L17.65 6.35Z" fill="currentColor"/>
+                            </svg>
+                            Refresh Schedule
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 1.5rem;">
+                    <div class="date-display" id="currentDate"></div>
+                    
+                    <div class="events-container" id="eventsContainer">
+                        <div class="loading">Loading schedule...</div>
+                    </div>
+                </div>
             </div>
-        </main>
+        </div>
+    </div>
+
+    <script>
+        function updateCurrentDate() {
+            const now = new Date();
+            const options = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            };
+            document.getElementById('currentDate').textContent = 
+                now.toLocaleDateString('en-US', options);
+        }
+
+        async function displayEvents(events) {
+            const container = document.getElementById('eventsContainer');
+            const periodsToday = await getPeriodsToday(events);
+            if (!events || events.length === 0) {
+                container.innerHTML = '<div class="error">No schedule found for today</div>';
+                return;
+            }
+            const now = new Date();
+            const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
+                              now.getMinutes().toString().padStart(2, '0');
+            let eventsHTML = '';
+            let currentPeriodFound = false;
+            periodsToday.forEach(period => {
+                const isCurrentPeriod = currentTime >= period.startTime && 
+                                      currentTime <= period.endTime;
+                if (isCurrentPeriod) {
+                    currentPeriodFound = true;
+                }
+                    eventsHTML += `
+                        <div class="event-item ${isCurrentPeriod ? 'current-period' : ''}">
+                            <div class="event-time">
+                                ${period.startTime} - ${period.endTime}
+                                ${isCurrentPeriod ? ' 🟢' : ''}
+                            </div>
+                            <div class="event-title">${period.title}</div>
+                        </div>
+                    `;
+            });
+            if (!currentPeriodFound) {
+                eventsHTML = `
+                    <div class="event-item no-current-period">
+                        <div class="event-time">No current period - Outside of school hours</div>
+                    </div>
+                ` + eventsHTML;
+            }
+            container.innerHTML = eventsHTML;
+        }
+        
+        function updateCacheStatus(lastUpdated) {
+            const statusElement = document.getElementById('cacheStatus');
+            if (!lastUpdated) {
+                statusElement.textContent = 'Cache: Loading...';
+                return;
+            }
+            const updated = new Date(lastUpdated);
+            const now = new Date();
+            const minutesAgo = Math.floor((now - updated) / (1000 * 60));
+            let statusText = `Cache: Updated `;
+            if (minutesAgo === 0) {
+                statusText += 'just now';
+            } else if (minutesAgo === 1) {
+                statusText += '1 minute ago';
+            } else {
+                statusText += `${minutesAgo} minutes ago`;
+            }
+            statusElement.textContent = statusText;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCurrentDate();
+            loadCalendarEvents();
+            setInterval(loadCalendarEvents, 5 * 60 * 1000);
+        });
+    </script>
     </body>
 </html>
