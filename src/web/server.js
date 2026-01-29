@@ -62,7 +62,7 @@ function shouldUpdateCache() {
 
 async function fetchCalendarFromAPI(date = null) {
   return new Promise((resolve, reject) => {
-    const pythonScriptPath = path.join(__dirname, "api/calendar", "calendar.py");
+    const pythonScriptPath = path.join(__dirname, "api/calendar", "fetch_calendar.py");
     if (!fs.existsSync(pythonScriptPath)) {
       console.error('Python script not found at:', pythonScriptPath);
       reject(new Error('Python script not found'));
@@ -83,7 +83,7 @@ async function fetchCalendarFromAPI(date = null) {
       console.error('Python stderr:', chunk.toString());
     });
     pythonProcess.on('close', (code) => {
-      console.log(`Python script exited with code: ${code}`);
+      //console.log(`Python script exited with code: ${code}`);
       if (code !== 0) {
         reject(new Error(`Python script exited with code ${code}: ${error}`));
         return;
@@ -93,7 +93,7 @@ async function fetchCalendarFromAPI(date = null) {
         if (result.error) {
           reject(new Error(result.error));
         } else {
-          console.log('Successfully parsed calendar data for date:', result.date, 'events:', result.events?.length || 0);
+          //console.log('Successfully parsed calendar data for date:', result.date, 'events:', result.events?.length || 0);
           resolve(result);
         }
       } catch (parseError) {
@@ -103,7 +103,7 @@ async function fetchCalendarFromAPI(date = null) {
       }
     });
     pythonProcess.on('error', (err) => {
-      console.error('Python process failed:', err.message);
+      //console.error('Python process failed:', err.message);
       reject(new Error(`Python process failed: ${err.message}`));
     });
   });
