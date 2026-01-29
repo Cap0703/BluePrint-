@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Left Side Navigation Bar</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .navbar {
             width: 200px;
@@ -24,9 +25,10 @@
             padding: 20px;
             text-align: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
         }
 
-        .navbar:hover, .navbar.open {
+        .navbar.pinned {
             left: 0px;
         }
 
@@ -38,6 +40,7 @@
         .navbar-menu {
             list-style: none;
             padding: 15px 0;
+            margin: 0;
         }
 
         .navbar-item {
@@ -86,59 +89,105 @@
             object-fit: contain;
             filter: brightness(0) invert(1);
         }
+
+        .navbar.pinned {
+            left: 0px;
+        }
+
+        .navbar.pinned,
+        .navbar.locked {
+            left: 0px !important;
+        }
+
+        .navbar:not(.pinned):not(.locked):hover {
+            left: 0px;
+        }
+
+        .nav-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .nav-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .navbar.pinned .nav-toggle i {
+            transform: rotate(45deg);
+        }
+
+        .navbar-menu .navbar-item:last-child {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <nav class="navbar" id="navbar">
         <div class="navbar-header">
             <h2>BluePrint™</h2>
+            <button class="nav-toggle" id="navToggle">
+                <i class="fas fa-thumbtack"></i>
+            </button>
         </div>
         <ul class="navbar-menu">
             <li class="navbar-item">
                 <a href="/" class="navbar-link" data-page="dashboard">
-                    <span class="navbar-icon"><img src="navbar-icon/dashboard.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/dashboard.png" alt="Dashboard Icon"></span>
                     <span class="navbar-text">Dashboard</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/profile" class="navbar-link" data-page="profile">
-                    <span class="navbar-icon"><img src="navbar-icon/profile.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/profile.png" alt="Profile Icon"></span>
                     <span class="navbar-text">Profile</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/analytics" class="navbar-link" data-page="analytics">
-                    <span class="navbar-icon"><img src="navbar-icon/analytics.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/analytics.png" alt="Analytics Icon"></span>
                     <span class="navbar-text">Analytics</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/master_logs" class="navbar-link" data-page="master_logs">
-                    <span class="navbar-icon"><img src="navbar-icon/master_logs.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/master_logs.png" alt="Master Logs Icon"></span>
                     <span class="navbar-text">Master Logs</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/calendar" class="navbar-link" data-page="calendar">
-                    <span class="navbar-icon"><img src="navbar-icon/calendar.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/calendar.png" alt="Calendar Icon"></span>
                     <span class="navbar-text">Calendar</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/map" class="navbar-link" data-page="map">
-                    <span class="navbar-icon"><img src="navbar-icon/current_class_map.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/current_class_map.png" alt="Map Icon"></span>
                     <span class="navbar-text">Current Class Map</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/lookup" class="navbar-link" data-page="lookup">
-                    <span class="navbar-icon"><img src="navbar-icon/student_lookup.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/student_lookup.png" alt="Lookup Icon"></span>
                     <span class="navbar-text">Student Lookup</span>
                 </a>
             </li>
             <li class="navbar-item">
                 <a href="/scanners" class="navbar-link" data-page="scanners">
-                    <span class="navbar-icon"><img src="navbar-icon/connected_scanners.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/connected_scanners.png" alt="Scanners Icon"></span>
                     <span class="navbar-text">Connected Scanners</span>
                 </a>
             </li>
@@ -150,35 +199,11 @@
             </li>
             <li class="navbar-item">
                 <a href="/security" class="navbar-link" data-page="security">
-                    <span class="navbar-icon"><img src="navbar-icon/security.png" alt="Settings Icon"></span>
+                    <span class="navbar-icon"><img src="navbar-icon/security.png" alt="Security Icon"></span>
                     <span class="navbar-text">Security</span>
                 </a>
             </li>
-            <li class="navbar-item">
-                <button class="nav-toggle" id="navToggle">=</button>
-            </li>
         </ul>
     </nav>
-    <script>
-        // Highlight active link based on current page
-        document.addEventListener('DOMContentLoaded', () => {
-            const currentPage = window.location.pathname.split('/').pop() || 'dashboard';
-            const links = document.querySelectorAll('.navbar-link');
-
-            links.forEach(link => {
-                if (link.getAttribute('data-page') === currentPage) {
-                    link.classList.add('active');
-                }
-            });
-        });
-
-        // Toggle navbar visibility
-        const navToggle = document.getElementById('navToggle');
-        const navbar = document.getElementById('navbar');
-
-        navToggle.addEventListener('click', () => {
-            navbar.classList.toggle('open');
-        });
-    </script>
 </body>
 </html>
