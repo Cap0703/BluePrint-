@@ -86,7 +86,7 @@
             .calendar-grid {
                 display: flex;
                 position: relative;
-                min-height: 1440px;
+                min-height: 1040px;
             }
 
             .time-column {
@@ -366,7 +366,7 @@
             function generateTimeColumn() {
                 const container = document.getElementById('timeColumn');
                 let html = '';
-                for (let hour = 0; hour < 24; hour++) {
+                for (let hour = 6; hour < 24; hour++) {
                     const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
                     const ampm = hour >= 12 ? 'PM' : 'AM';
                     html += `<div class="time-slot" style="height: 60px;">

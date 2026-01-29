@@ -99,14 +99,14 @@ function displayEvents(calendarData) {
     let html = '';
     let currentPeriodFound = false;
     const TOP_OFFSET = 10;
-    for (let hour = 0; hour < 24; hour++) {
+    for (let hour = 0; hour < 24-6; hour++) {
         const topPosition = hour * 60 + TOP_OFFSET;
         html += `<div class="hour-marker" style="top: ${topPosition}px;"></div>`;
         const halfHourTop = topPosition + 30;
         html += `<div class="half-hour-marker" style="top: ${halfHourTop}px;"></div>`;
     }
     if (currentTotalMinutes >= 0 && currentTotalMinutes < 24 * 60) {
-        const indicatorTop = currentTotalMinutes + TOP_OFFSET;
+        const indicatorTop = currentTotalMinutes + TOP_OFFSET-370;
         const displayHour = currentHours === 0 ? 12 : (currentHours > 12 ? currentHours - 12 : currentHours);
         const ampm = currentHours >= 12 ? 'PM' : 'AM';
         html += `
@@ -125,7 +125,7 @@ function displayEvents(calendarData) {
         const endMinutes = parseInt(endTime[1]);
         const startTotalMinutes = startHours * 60 + startMinutes;
         const endTotalMinutes = endHours * 60 + endMinutes;
-        const top = startTotalMinutes + TOP_OFFSET;
+        const top = startTotalMinutes + TOP_OFFSET-370;
         const height = endTotalMinutes - startTotalMinutes;
         const isCurrent = currentTotalMinutes >= startTotalMinutes && 
                           currentTotalMinutes <= endTotalMinutes;
@@ -204,7 +204,7 @@ function displayFallbackEvents() {
         html += `<div class="half-hour-marker" style="top: ${halfHourTop}px;"></div>`;
     }
     if (currentTotalMinutes >= 0 && currentTotalMinutes < 24 * 60) {
-        const indicatorTop = currentTotalMinutes + TOP_OFFSET;
+        const indicatorTop = currentTotalMinutes + TOP_OFFSET-370;
         const displayHour = currentHours === 0 ? 12 : (currentHours > 12 ? currentHours - 12 : currentHours);
         const ampm = currentHours >= 12 ? 'PM' : 'AM';
         html += `
