@@ -15,7 +15,7 @@ const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json')
 
 app.use(express.static(path.join(__dirname, "public")));
 
-/*----------------------------------------Middleware----------------------------------------*/
+/*----------------------------------------Calendar Functions----------------------------------------*/
 let calendarCache = { data: null, lastUpdated: null, isUpdating: false };
 
 function loadCalendarCache() {

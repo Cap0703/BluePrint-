@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import json
 import sys
 import os
+from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -12,9 +13,10 @@ try:
 except ImportError as e:
     print(json.dumps({"error": f"Import error: {str(e)}"}))
     sys.exit(1)
-
-CALENDAR_ID = "mugmv777bfti0bfcp8covuqulv4fedhm@import.calendar.google.com"
-API_KEY = "AIzaSyDtLRQUX6lbu0XHvu6SVEt9O15LCD249gU"
+load_dotenv()
+CALENDAR_ID = os.getenv("CALENDAR_ID")
+API_KEY = os.getenv("API_KEY")
+CURRENT_LOCATION = os.getenv("CURRENT_LOCATION")
 
 def main():
     try:

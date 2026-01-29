@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-target_date = datetime.now(ZoneInfo("America/Los_Angeles"))
+CURRENT_LOCATION = os.getenv("CURRENT_LOCATION", "America/Los_Angeles")
 
+target_date = datetime.now(ZoneInfo(CURRENT_LOCATION)).date()
 
-time_min = datetime.combine(target_date, datetime.min.time(), ZoneInfo("America/Los_Angeles")).isoformat()
-time_max = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), ZoneInfo("America/Los_Angeles")).isoformat()
-
+time_min = datetime.combine(target_date, datetime.min.time(), ZoneInfo(CURRENT_LOCATION)).isoformat()
+time_max = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), ZoneInfo(CURRENT_LOCATION)).isoformat()
 class Event:
     def __init__(self, start_time, end_time, title):
         self.start_time = start_time
