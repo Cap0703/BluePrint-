@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { initializeDatabase } from './db.js';
+import { pool, initializeDatabase } from './db.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -10,6 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+app.use(express.json());
 
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
 
@@ -157,6 +159,25 @@ function getPeriodsToday() {
 
 loadCalendarCache();
 
+/*----------------------------------------Log Functions----------------------------------------*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*---------------------------------------API Endpoints---------------------------------------*/
 app.get('/api/calendar/today', async (req, res) => {
   try {
@@ -177,6 +198,62 @@ app.get('/api/calendar/today', async (req, res) => {
       lastUpdated: new Date().toISOString(),
       date: new Date().toISOString().split('T')[0]
     });
+  }
+});
+
+app.get('/api/logs', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      ORDER BY date_scanned DESC, time_scanned DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching logs:', err);
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+app.post('/api/logs', async (req, res) => {
+  const {
+    period,
+    scanner_location,
+    scanner_id,
+    student_id,
+    first_name,
+    last_name,
+    time_scanned,
+    date_scanned,
+    status
+  } = req.body;
+  try {    await pool.query(`
+    INSERT INTO logs (
+      period,
+      scanner_location,
+      scanner_id,
+      student_id,
+      first_name,
+      last_name,
+      time_scanned,
+      date_scanned,
+      status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [  period, scanner_location, scanner_id, student_id, first_name, last_name, time_scanned, date_scanned, status]);
+  res.status(201).json({ message: 'Log entry created successfully' });
+} catch (err) {
+  console.error('Error creating log entry:', err);
+  res.status(500).json({ error: 'Failed to create log entry' });
+}
+});
+
+app.delete('/api/logs/:id', async (req, res) => {
+  const logId = req.params.id;
+  try {    await pool.query('DELETE FROM logs WHERE id = $1', [logId]);
+    res.json({ message: 'Log entry deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting log entry:', err);
+    res.status(500).json({ error: 'Failed to delete log entry' });
   }
 });
 

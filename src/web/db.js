@@ -44,12 +44,11 @@ async function initLogs() {
                 scanner_location TEXT,
                 scanner_id TEXT,
                 student_id TEXT,
-                class_late TEXT,
                 first_name TEXT,
                 last_name TEXT,
                 time_scanned TEXT,
                 date_scanned TEXT,
-                marked TEXT
+                status TEXT
             );
         `);
         console.log('Logs table initialized.');

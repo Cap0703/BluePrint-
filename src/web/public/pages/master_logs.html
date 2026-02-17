@@ -7,15 +7,183 @@
         <link rel="stylesheet" href="/css/style.css">
         <script defer src="/js/navbar.js"></script>
         <link rel="icon" type="image/png" href="/images/favicon.png">
+        <style>
+            #logsMainContainer {
+                background-color: #0073ff25;
+                border: 1px solid #00000034;
+                padding: 20px;
+                margin-top: 20px;
+                height: 800px;
+                width: 1650px;
+                overflow-y: scroll;
+                font-family: monospace;
+                white-space: pre-wrap;
+                border-radius: 10px;
+                scrollbar-color: rgba(125, 125, 125, 0.438) rgba(2, 36, 83, 0.425);
+            }
+
+            #logsMainContainer::-webkit-scrollbar-track {
+                background: #0f53b2;
+            }
+
+            #logsHeader h2 {
+                position:left;
+                margin: 0;
+            }
+
+            #logsHeader {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+
+            #logsContent {
+                background-color: rgba(0, 0, 0, 0.339);
+                height: 1000px;
+            }
+
+            .logs-table {
+                width: 100%;
+                border-collapse: separate;
+            }
+             
+            .on-time {
+                background-color: green;
+                border-radius: 20px;
+            }
+            .late {
+                background-color: red;
+                border-radius: 20px;
+            }
+
+            .logs-table th {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: center;
+            }
+
+            .modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.6);
+            }
+
+            .modal-content {
+                background-color: #fefefe;
+                margin: 10% auto;
+                padding: 20px;
+                border: 1px solid #888;
+                border-radius: 10px;
+                width: 50%;
+                max-width: 500px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            }
+
+            .close-btn {
+                color: #aaa;
+                float: right;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+                line-height: 20px;
+            }
+
+            .close-btn:hover,
+            .close-btn:focus {
+                color: black;
+            }
+
+            #logForm {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                margin-top: 20px;
+            }
+
+            #logForm input,
+            #logForm select {
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+
+            #logForm button {
+                padding: 10px;
+                background-color: #0073ff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+            }
+
+            #logForm button:hover {
+                background-color: #0056cc;
+            }
+
+            #addLogButton {
+                padding: 8px 16px;
+                background-color: #0073ff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 14px;
+                width: fit-content;
+                position: fixed;
+                top: 20px;
+                right: 20px;
+            }
+
+            #addLogButton:hover {
+                background-color: #0056cc;
+            }
+            
+        </style>
     </head>
     <body>
         <div id="navbar"></div>
-
         <main>
             <h1>Master Logs</h1>
-            <div id="logsContainer">
-                <!-- Logs will be dynamically loaded here -->
+            <div id="logModal" class="modal">
+                <div class="modal-content">
+                    <span class="close-btn" id="closeModal">&times;</span>
+                    <h2>Add Log Entry</h2>
+                    <form id="logForm">
+                        <input type="text" name="first_name" placeholder="First Name" required>
+                        <input type="text" name="last_name" placeholder="Last Name" required>
+                        <input type="text" name="student_id" placeholder="Student ID" required>
+                        <input type="text" name="period" placeholder="Period" required>
+                        <input type="text" name="scanner_location" placeholder="Scanner Location" required>
+                        <input type="text" name="scanner_id" placeholder="Scanner ID" required>
+                        <select type="text" name="status">
+                            <option value="1">On Time</option>
+                            <option value="2">Late</option>
+                            <option value="3">Absent</option>
+                            <option value="4">Excused</option>
+                        </select>
+                        <button type="submit">Submit Log</button>
+                    </form>
+                </div>
+            </div>
+            <div id="logsMainContainer">
+                <div id="logsHeader">
+                    <button id="addLogButton">Add Log Entry</button>
+                    <h2>Real-time Master Logs</h2>
+                </div>
+                <div id="logsContent">
+                    <p>Loading logs...</p>
+                </div>
             </div>
         </main>
+        <script src="/js/logs.js"></script>
     </body>
 </html>
