@@ -41,7 +41,7 @@ SoftwareSerial mySerial(2, 3);
 
 std::vector<std::vector<int>> idMatrix;
 // only holds 127 prints?
-int numPrints = 0;
+int id = 0;
 int studentID;
 // the above are to only be used for translating student id's to fingerprint id range
 
@@ -54,8 +54,6 @@ HardwareSerial mySerial(2);
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
-int id;
-
 void setup()
 {
   Serial.begin(115200);
@@ -63,8 +61,43 @@ void setup()
   delay(100);
   Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
+  
+
   // set the data rate for the sensor serial port
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
+  id = getNextFreeID();
+}
+
+int getNextFreeID() {
+  for (int i = 1; i <= 127; i++) {
+    if (finger.loadModel(i) != FINGERPRINT_OK) {
+      return i;  // slot is empty
+    }
+  }
+  return -1; // no free slots
+}
+
+void isStorageFull() {
+  if (id == -1) {
+    Serial.println("No free fingerprint slots.");
+    Serial.println("Delete all stored fingerprints? (y/n)");
+
+    while (!Serial.available());
+    char response = Serial.read();
+
+    if (response == 'y' || response == 'Y') {
+      if (finger.emptyDatabase() == FINGERPRINT_OK) {
+        Serial.println("All fingerprints deleted.");
+        idMatrix.clear();   // clear your local mapping too
+      } else {
+        Serial.println("Failed to delete database.");
+        return;
+      }
+    } else {
+      Serial.println("Enrollment cancelled. \n CAPACITY REACHED: CONTINUING TO ENROLL WILL DELETE DATA");
+      return;
+    }
+  }
 }
 
 int readnumber(void) {
@@ -79,23 +112,22 @@ int readnumber(void) {
 
 void loop()                     // run over and over again
 {
+  isStorageFull();
   Serial.println("Ready to enroll a fingerprint!");
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
   Serial.println("Please type the Student ID you want to save this finger as...");
 
   studentID = readnumber();
-  numPrints++;
-  id = numPrints;
 
-  idMatrix.push_back({numPrints, studentID});
-
-  numPrints--;
+  id++;
+  idMatrix.push_back({id, studentID});
 
   if (id == 0) {// ID #0 not allowed, try again!
      return;
   }
   Serial.print("Enrolling ID #");
   Serial.println(studentID);
+  id--;
   while (!getFingerprintEnroll() );
 }
 
@@ -159,10 +191,10 @@ uint8_t getFingerprintEnroll() {
   Serial.print("\nStudent ID: ");
   Serial.print(idMatrix.back()[studentNum]);
   Serial.print("\nBluePrints Stored: "); 
-  Serial.println(idMatrix.back()[fingerID]);
+  Serial.println(id);
   p = -1;
 
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
   Serial.println("Place same finger again");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
@@ -223,7 +255,7 @@ uint8_t getFingerprintEnroll() {
       return p;
   }
 
-  Serial.print("Creating model for #");  Serial.println(id);
+  Serial.print("Creating model for #");  Serial.println(id + 1);
 
   p = finger.createModel();
   if (p == FINGERPRINT_OK) {
@@ -245,12 +277,12 @@ uint8_t getFingerprintEnroll() {
     return p;
   }
 
-  Serial.print("ID "); Serial.println(id);
+  Serial.print("ID "); Serial.println(id + 1);
   p = finger.storeModel(id);
   if (p == FINGERPRINT_OK) {
     Serial.println("Stored!");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
-    numPrints++;
+    id++;
     delay(5000);
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
