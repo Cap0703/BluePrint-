@@ -17,6 +17,7 @@
  ****************************************************/
 
 #include <Adafruit_Fingerprint.h>
+#include <vector>
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -34,11 +35,26 @@ SoftwareSerial mySerial(2, 3);
 
 #define RX_GPIO 16
 #define TX_GPIO 17
+
+#define FINGERPRINT_LED_PINK 0x01
+#define FINGERPRINT_LED_GREEN 0x04
+
+std::vector<std::vector<int>> idMatrix;
+// only holds 127 prints?
+int numPrints = 0;
+int studentID;
+// the above are to only be used for translating student id's to fingerprint id range
+
+int fingerID = 0;
+int studentNum = 1;
+// the above are used to more intuitively index through the matrix
+
+
 HardwareSerial mySerial(2);
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
-uint8_t id;
+int id;
 
 void setup()
 {
@@ -51,11 +67,11 @@ void setup()
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
 }
 
-uint8_t readnumber(void) {
-  uint8_t num = 0;
+int readnumber(void) {
+  int num = 0;
 
   while (num == 0) {
-    while (! Serial.available());
+    while (!Serial.available());
     num = Serial.parseInt();
   }
   return num;
@@ -64,23 +80,29 @@ uint8_t readnumber(void) {
 void loop()                     // run over and over again
 {
   Serial.println("Ready to enroll a fingerprint!");
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, FINGERPRINT_LED_RED);
-  //Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
-  id = 1;
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  Serial.println("Please type the Student ID you want to save this finger as...");
+
+  studentID = readnumber();
+  numPrints++;
+  id = numPrints;
+
+  idMatrix.push_back({numPrints, studentID});
+
+  numPrints--;
+
   if (id == 0) {// ID #0 not allowed, try again!
      return;
   }
   Serial.print("Enrolling ID #");
-  Serial.println(id);
-
-  while (! getFingerprintEnroll() );
+  Serial.println(studentID);
+  while (!getFingerprintEnroll() );
 }
 
 uint8_t getFingerprintEnroll() {
 
   int p = -1;
-  Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
+  Serial.print("Waiting for valid finger to enroll as Student #"); Serial.println(idMatrix.back()[studentNum]);
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
     switch (p) {
@@ -126,65 +148,81 @@ uint8_t getFingerprintEnroll() {
       return p;
   }
 
-
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   Serial.println("Remove finger");
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
   p = 0;
   while (p != FINGERPRINT_NOFINGER) {
     p = finger.getImage();
   }
-  Serial.print("ID "); Serial.println(id);
+
+  Serial.print("\nStudent ID: ");
+  Serial.print(idMatrix.back()[studentNum]);
+  Serial.print("\nBluePrints Stored: "); 
+  Serial.println(idMatrix.back()[fingerID]);
   p = -1;
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
+
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   Serial.println("Place same finger again");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
     switch (p) {
     case FINGERPRINT_OK:
-      Serial.println("Image taken");
+      //Serial.println("Image taken");
       break;
     case FINGERPRINT_NOFINGER:
       Serial.print(".");
       break;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       break;
     case FINGERPRINT_IMAGEFAIL:
       Serial.println("Imaging error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       break;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       break;
     }
   }
 
-  // OK success!
-finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   p = finger.image2Tz(2);
   switch (p) {
     case FINGERPRINT_OK:
-      Serial.println("Image converted");
+      //Serial.println("Image converted");
       break;
     case FINGERPRINT_IMAGEMESS:
       Serial.println("Image too messy");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       return p;
     case FINGERPRINT_FEATUREFAIL:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       return p;
     case FINGERPRINT_INVALIDIMAGE:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       return p;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+      delay(5000);
       return p;
   }
 
-  // OK converted!
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 400, FINGERPRINT_LED_RED);
   Serial.print("Creating model for #");  Serial.println(id);
 
   p = finger.createModel();
@@ -192,12 +230,18 @@ finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
     Serial.println("Prints matched!");
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   } else if (p == FINGERPRINT_ENROLLMISMATCH) {
     Serial.println("Fingerprints did not match");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   } else {
     Serial.println("Unknown error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   }
 
@@ -205,17 +249,28 @@ finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   p = finger.storeModel(id);
   if (p == FINGERPRINT_OK) {
     Serial.println("Stored!");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
+    numPrints++;
+    delay(5000);
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   } else if (p == FINGERPRINT_BADLOCATION) {
     Serial.println("Could not store in that location");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   } else if (p == FINGERPRINT_FLASHERR) {
     Serial.println("Error writing to flash");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   } else {
     Serial.println("Unknown error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(5000);
     return p;
   }
 

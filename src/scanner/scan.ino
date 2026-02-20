@@ -16,6 +16,19 @@
 
 
 #include <Adafruit_Fingerprint.h>
+#include <WiFi.h> 
+#include <HTTPClient.h>
+#include time.h
+
+const char* ssid = "BraveWeb";
+const char* password = "Br@veW3b";
+const SCANNER_ID = 1;
+const SCANNER_LOC = 204;
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 8;
+const int daylightOffset_sec = 3600;
+
+String serverEndpoint = "http://10.20.11.255:3000";
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -41,6 +54,22 @@ void setup()
   while (!Serial);  // For Yun/Leo/Micro/Zero/...
   delay(100);
   Serial.println("\n\nAdafruit finger detect test");
+
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting...");
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  struct tm timeinfo;
+
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
 
   // set the data rate for the sensor serial port
   finger.begin(57600);
@@ -141,6 +170,7 @@ uint8_t getFingerprintID() {
   // found a match!
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
   Serial.print(" with confidence of "); Serial.println(finger.confidence);
+  sendWebRequest(finger.fingerID);
 
   return finger.fingerID;
 }
@@ -160,4 +190,54 @@ int getFingerprintIDez() {
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
   Serial.print(" with confidence of "); Serial.println(finger.confidence);
   return finger.fingerID;
+}
+
+void getDateTime(){
+ struct tm timeinfo;
+  
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    dateStr = "0000-00-00";
+    timeStr = "00:00:00";
+    return;
+  }
+
+  char dateBuffer[11];
+  char timeBuffer[9];
+
+  strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &timeinfo);
+  strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeinfo);
+
+  dateStr = String(dateBuffer);
+  timeStr = String(timeBuffer);
+}
+
+void sendWebRequest(int studentID) {
+  if(WiFi.status() == WL_CONNECTED){
+    String dateScanned;
+    String timeScanned;
+    getDateTime(dateScanned, timeScanned);
+    WiFiClient client;
+    HTTPClient http;
+    String serverPath = serverEndpoint + "/api/logs";
+    http.begin(client, serverPath);
+    http.addHeader("Content-Type", "application/json");
+    String httpRequestData = "{";
+    httpRequestData += "\"period\":\"na\",";
+    httpRequestData += "\"scanner_location\":" + String(SCANNER_LOC) + ",";
+    httpRequestData += "\"scanner_id\":" + String(SCANNER_ID) + ",";
+    httpRequestData += "\"student_id\":\"" + String(studentID) + "\",";
+    httpRequestData += "\"first_name\":\"na\",";
+    httpRequestData += "\"last_name\":\"na\",";
+    httpRequestData += "\"time_scanned\":\"" + timeScanned + "\",";
+    httpRequestData += "\"date_scanned\":\"" + dateScanned + "\"";
+    httpRequestData += "}";
+    int httpResponseCode = http.POST(httpRequestData);
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    http.end();
+  }
+  else {
+    serial.println("Stupid ahh Brady");
+  }
 }
