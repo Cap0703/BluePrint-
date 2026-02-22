@@ -1,5 +1,6 @@
 import pkg from 'pg';
 const { Pool } = pkg;
+import bcrypt from 'bcrypt';
 
 export const pool = new Pool({
   user: process.env.DB_USER,
@@ -52,7 +53,8 @@ async function initWebUsers() {
                 password_hash VARCHAR(255) NOT NULL,
                 role VARCHAR(50) NOT NULL CHECK (role IN ('teacher', 'administrator')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                courses TEXT[] DEFAULT '{}'
             );
         `);
         console.log('Web user table initialized.');

@@ -25,10 +25,41 @@
             <h1>User Profile</h1>
             <div class="profile-card">
                 <i class="fas fa-user-circle fa-5x"></i>
-                <h2>Brady Spakshots</h2>
-                <p>Email: brady.spakshots@example.com</p>
-                <p><b>Current Courses:</b> </p>
+                <h2 id="profileName">Loading...</h2>
+                <p>Email: <span id="profileEmail"></span></p>
+                <p>Role: <span id="profileRole"></span></p>
+                <p><b>Current Courses:</b> <span id="profileCourses">Not available</span></p>
             </div>
         </div>
     </body>
+    <script>
+        async function loadProfile() {
+            const token = localStorage.getItem('auth_token');
+            try {
+                const res = await fetch('/api/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!res.ok) {
+                    localStorage.removeItem('auth_token');
+                    window.location.href = '/login.html';
+                    return;
+                }
+                const user = await res.json();
+                document.getElementById('profileName').textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                document.getElementById('profileEmail').textContent = user.email || '';
+                document.getElementById('profileRole').textContent = user.role || '';
+                if (user.courses && Array.isArray(user.courses) && user.courses.length) {
+                    document.getElementById('profileCourses').textContent = user.courses.join(', ');
+                }
+            } catch (err) {
+                console.error('Error loading profile:', err);
+                localStorage.removeItem('auth_token');
+                window.location.href = '/login.html';
+            }
+        }
+        document.addEventListener('DOMContentLoaded', loadProfile);
+    </script>
 </html>

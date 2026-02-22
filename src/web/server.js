@@ -682,10 +682,9 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', verifyToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
+      'SELECT id, email, first_name, last_name, role, created_at, courses FROM users WHERE id = $1',
       [req.user.id]
     );
-
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
