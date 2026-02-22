@@ -10,20 +10,49 @@ export const pool = new Pool({
 });
 
 export async function initializeDatabase() {
-    await initUsers();
+    await initWebUsers();
+    await initAppUsers();
+    await initUserSettings();
+    await initNotifications();
     await initLogs();
     await initScanners();
 }
 
-async function initUsers() {
+async function initAppUsers() {
+    const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS students (
+                id SERIAL PRIMARY KEY,
+                uuid TEXT UNIQUE,
+                student_id int,
+                password_hash VARCHAR(255) NOT NULL,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('App student table initialized');
+    } catch (err) {
+        console.error('Error initializing web user table:', err);
+    } finally {
+        client.release();
+    }
+}
+
+async function initWebUsers() {
   const client = await pool.connect();
     try {
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 email VARCHAR(255) UNIQUE NOT NULL,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
                 password_hash VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                role VARCHAR(50) NOT NULL CHECK (role IN ('teacher', 'administrator')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
         console.log('Web user table initialized.');
@@ -69,6 +98,7 @@ async function initScanners() {
                 id SERIAL PRIMARY KEY,
                 scanner_id TEXT UNIQUE,
                 scanner_location TEXT,
+                password_hash VARCHAR(255) NOT NULL,
                 scanner_status TEXT,
                 last_sync TEXT,
                 battery_level TEXT
@@ -80,6 +110,51 @@ async function initScanners() {
         console.error('Error initializing scanners table:', err);
     }
     finally {
+        client.release();
+    }
+}
+
+async function initUserSettings() {
+  const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS user_settings (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                capacity_alerts BOOLEAN DEFAULT true,
+                unexpected_appearance_alerts BOOLEAN DEFAULT true,
+                grace_period_minutes INTEGER DEFAULT 5,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id)
+            );
+        `);
+        console.log('User settings table initialized.');
+    } catch (err) {
+        console.error('Error initializing user settings table:', err);
+    } finally {
+        client.release();
+    }
+}
+
+async function initNotifications() {
+  const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                message TEXT,
+                type VARCHAR(50),
+                is_read BOOLEAN DEFAULT false,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('Notifications table initialized.');
+    } catch (err) {
+        console.error('Error initializing notifications table:', err);
+    } finally {
         client.release();
     }
 }

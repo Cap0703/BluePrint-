@@ -1,20 +1,406 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Connected Scanners - BluePrint™</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <link rel="stylesheet" href="/css/style.css">
-        <script src="/js/navbar.js"></script>
-    </head>
-    <body>
-        <div id="navbar"></div>
-        <div class="scanners-container">
-            <h1>Connected Scanners</h1>
-            <div class="scanners-card">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected Scanners - BluePrint™</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/navbar.js" defer></script>
 
+    <style>
+        .scanners-header {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .scanners-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .scanners-table thead {
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .scanners-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .scanners-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .scanners-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-edit, .btn-delete {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-edit {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .btn-edit:hover {
+            background-color: #2980b9;
+        }
+
+        .btn-delete {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background-color: #c0392b;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 400px;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input {
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            background-color: #1f4ed8;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            background-color: #163bb3;
+        }
+
+        .form-message {
+            margin-top: 10px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <div class="scanners-container">
+        <h1>Connected Scanners</h1>
+
+        <div class="scanners-card">
+
+            <div class="scanners-header">
+                <h2>Manage Scanners</h2>
+                <button id="openScannerModal" class="btn-primary">
+                    <i class="fas fa-plus"></i> Add Scanner
+                </button>
             </div>
+
+            <div id="scannersListContainer" class="loading">
+                <i class="fas fa-spinner fa-spin"></i> Loading scanners...
+            </div>
+
+            <!-- Modal -->
+            <div id="scannerModal" class="modal">
+                <div class="modal-content">
+                    <span class="close-btn" id="closeScannerModal">&times;</span>
+                    <h2 id="modalTitle">Add Scanner</h2>
+
+                    <form id="addScannerForm">
+                        <div class="form-group">
+                            <label>Scanner ID</label>
+                            <input type="text" id="scanner_id" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Location</label>
+                            <input type="text" id="scanner_location" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="scanner_password" required>
+                        </div>
+
+                        <button type="submit" class="btn-primary" id="submitBtn">
+                            <i class="fas fa-save"></i> Create Scanner
+                        </button>
+
+                        <p id="scannerMessage" class="form-message"></p>
+                    </form>
+                </div>
+            </div>
+
         </div>
-    </body>
+    </div>
+
+    <script>
+        let currentEditingId = null;
+        const modal = document.getElementById('scannerModal');
+        const openBtn = document.getElementById('openScannerModal');
+        const closeBtn = document.getElementById('closeScannerModal');
+        const form = document.getElementById('addScannerForm');
+        const messageEl = document.getElementById('scannerMessage');
+        const modalTitle = document.getElementById('modalTitle');
+        const submitBtn = document.getElementById('submitBtn');
+        document.addEventListener('DOMContentLoaded', loadScanners);
+        openBtn.addEventListener('click', () => {
+            currentEditingId = null;
+            form.reset();
+            modalTitle.textContent = 'Add Scanner';
+            submitBtn.innerHTML = '<i class="fas fa-save"></i> Create Scanner';
+            messageEl.textContent = '';
+            modal.style.display = "flex";
+        });
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = "none";
+        });
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        });
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const SCANNER_ID = document.getElementById('scanner_id').value;
+            const SCANNER_LOCATION = document.getElementById('scanner_location').value;
+            const SCANNER_PASSWORD = document.getElementById('scanner_password').value;
+            messageEl.textContent = currentEditingId ? "Updating scanner..." : "Creating scanner...";
+            messageEl.style.color = "black";
+            try {
+                const token = localStorage.getItem('auth_token');
+                const url = currentEditingId ? `/api/scanners/${currentEditingId}` : '/api/scanners';
+                const method = currentEditingId ? 'PUT' : 'POST';
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ 
+                        SCANNER_ID: SCANNER_ID, 
+                        SCANNER_LOCATION: SCANNER_LOCATION, 
+                        SCANNER_PASSWORD: SCANNER_PASSWORD 
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    messageEl.textContent = data.error || "Error";
+                    messageEl.style.color = "red";
+                    return;
+                }
+                messageEl.textContent = currentEditingId ? "Scanner updated successfully!" : "Scanner created successfully!";
+                messageEl.style.color = "green";
+                form.reset();
+                setTimeout(() => {
+                    modal.style.display = "none";
+                    messageEl.textContent = "";
+                    loadScanners();
+                }, 1000);
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = "Server error";
+                messageEl.style.color = "red";
+            }
+        });
+
+        async function loadScanners() {
+            const container = document.getElementById('scannersListContainer');
+            try {
+                const token = localStorage.getItem('auth_token');
+                const response = await fetch('/api/scanners', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to load scanners');
+                }
+                const scanners = await response.json();
+                if (scanners.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-wifi"></i>
+                            <h3>No Scanners Connected</h3>
+                            <p>Click "Add Scanner" to register a new scanner device.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                let tableHTML = `
+                    <table class="scanners-table">
+                        <thead>
+                            <tr>
+                                <th>Scanner ID</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Last Sync</th>
+                                <th>Battery</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                scanners.forEach(scanner => {
+                    const status = scanner.scanner_status || 'Offline';
+                    const lastSync = scanner.last_sync || 'Never';
+                    const battery = scanner.battery_level || 'N/A';
+                    tableHTML += `
+                        <tr>
+                            <td>${scanner.scanner_id}</td>
+                            <td>${scanner.scanner_location}</td>
+                            <td><span style="color: ${status === 'Online' ? '#27ae60' : '#e74c3c'}; font-weight: bold;">${status}</span></td>
+                            <td>${lastSync}</td>
+                            <td>${battery}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-edit" onclick="editScanner(${scanner.id}, '${scanner.scanner_id}', '${scanner.scanner_location}')">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button class="btn-delete" onclick="deleteScanner(${scanner.id}, '${scanner.scanner_id}')">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                container.innerHTML = tableHTML;
+            } catch (err) {
+                console.error('Error loading scanners:', err);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <h3>Error Loading Scanners</h3>
+                        <p>Please try refreshing the page or contact support.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function editScanner(id, scannerId, location) {
+            currentEditingId = id;
+            document.getElementById('scanner_id').value = scannerId;
+            document.getElementById('scanner_location').value = location;
+            document.getElementById('scanner_password').value = '';
+            modalTitle.textContent = 'Edit Scanner';
+            submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Scanner';
+            messageEl.textContent = '';
+            modal.style.display = "flex";
+        }
+
+        async function deleteScanner(id, scannerId) {
+            if (!confirm(`Are you sure you want to delete scanner "${scannerId}"? This action cannot be undone.`)) {
+                return;
+            }
+            try {
+                const token = localStorage.getItem('auth_token');
+                const response = await fetch(`/api/scanners/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    alert('Failed to delete scanner');
+                    return;
+                }
+                loadScanners();
+            } catch (err) {
+                console.error('Error deleting scanner:', err);
+                alert('Error deleting scanner');
+            }
+        }
+    </script>
+</body>
 </html>

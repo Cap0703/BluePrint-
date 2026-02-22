@@ -55,7 +55,7 @@ def fetch_calendar_events(calendar_id, api_key, time_min, time_max):
             "orderBy": "startTime"
         }
         response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()  # Raises an HTTPError for bad responses
+        response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
         raise Exception(f"Failed to fetch calendar data: {str(e)}")

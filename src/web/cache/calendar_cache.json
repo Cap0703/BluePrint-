@@ -1,54 +1,49 @@
 {
   "data": {
-    "date": "2026-02-03",
+    "date": "2026-02-18",
     "events": [
       {
-        "startTime": "08:00",
-        "endTime": "09:25",
-        "title": "Period 1"
+        "startTime": "09:00",
+        "endTime": "10:25",
+        "title": "Period 5"
       },
       {
-        "startTime": "09:25",
-        "endTime": "09:30",
-        "title": "Transition"
-      },
-      {
-        "startTime": "09:30",
-        "endTime": "10:50",
-        "title": "Period 4"
-      },
-      {
-        "startTime": "10:50",
+        "startTime": "10:25",
         "endTime": "11:05",
-        "title": "Break"
+        "title": "CT: School Wide Prayer & Ash Service ***"
       },
       {
         "startTime": "11:05",
-        "endTime": "11:10",
+        "endTime": "11:20",
+        "title": "Break"
+      },
+      {
+        "startTime": "11:20",
+        "endTime": "11:25",
         "title": "Transition"
       },
       {
-        "startTime": "11:10",
-        "endTime": "12:30",
-        "title": "Period 2"
+        "startTime": "11:25",
+        "endTime": "12:45",
+        "title": "Period 6"
       },
       {
-        "startTime": "12:30",
-        "endTime": "13:00",
+        "startTime": "12:45",
+        "endTime": "13:15",
         "title": "Lunch"
       },
       {
-        "startTime": "13:00",
-        "endTime": "13:05",
+        "startTime": "13:15",
+        "endTime": "13:20",
         "title": "Transition"
       },
       {
-        "startTime": "13:05",
-        "endTime": "14:25",
-        "title": "Period 3"
+        "startTime": "13:20",
+        "endTime": "14:40",
+        "title": "Period 7"
       }
     ]
   },
-  "lastUpdated": "2026-02-03T20:18:01.111Z",
+  "lastUpdated": "2026-02-18T19:47:37.652Z",
   "isUpdating": false
 }
