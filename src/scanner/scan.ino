@@ -27,6 +27,7 @@ const SCANNER_LOC = 204;
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
+const SCANNER_PASSWORD = "BluePrint";
 
 String serverEndpoint = "http://10.20.11.255:3000";
 
@@ -70,7 +71,8 @@ void setup()
     Serial.println("Failed to obtain time");
     return;
   }
-
+  Serial.println("Signing in to the Website");
+  String token = signIn();
   // set the data rate for the sensor serial port
   finger.begin(57600);
   delay(5);
@@ -210,6 +212,31 @@ void getDateTime(){
 
   dateStr = String(dateBuffer);
   timeStr = String(timeBuffer);
+}
+
+String signIn(){
+  String result;
+  String serverPath = serverEndpoint + "/api/scanner/auth/login";
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, serverPath);
+  http.addHeader("Content-Type", "application/json");
+  String httpRequestData = "{";
+  httpRequestData += "\"SCANNER_ID\":" + String(SCANNER_ID) + ",";
+  httpRequestData += "\"SCANNER_LOCATION\":" + String(SCANNER_LOC) + ",";
+  httpRequestData += "\"SCANNER_PASSWORD\":" + String(SCANNER_PASSWORD) + "\"";
+  httpRequestData += "}";
+  int httpResponseCode = http.POST(httpRequestData);
+  if (httpResponseCode > 0) {
+    String payload = http.getString();
+    StaticJsonDocument<256> doc;
+    DeserializationError error = deserializeJson(doc, payload);
+    if (!error) {
+      result = doc["token"].as<String>();
+    }
+  }
+  http.end();
+  return result;
 }
 
 void sendWebRequest(int studentID) {

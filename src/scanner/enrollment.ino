@@ -18,6 +18,9 @@
 
 #include <Adafruit_Fingerprint.h>
 #include <vector>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -35,6 +38,8 @@ SoftwareSerial mySerial(2, 3);
 
 #define RX_GPIO 16
 #define TX_GPIO 17
+
+#define SD_CS 5
 
 #define FINGERPRINT_LED_PINK 0x01
 #define FINGERPRINT_LED_GREEN 0x04
@@ -65,6 +70,12 @@ void setup()
 
   // set the data rate for the sensor serial port
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
+  if (!SD.begin(SD_CS)) {
+    Serial.println("SD Card Mount Failed");
+    return;
+  }
+
+  Serial.println("SD Card Ready");
   id = getNextFreeID();
 }
 
@@ -100,6 +111,24 @@ void isStorageFull() {
   }
 }
 
+void saveStudent(int id, int studentID) {
+
+  File file = SD.open("/students.csv", FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file");
+    return;
+  }
+
+  // Save in CSV format
+  file.print(id);
+  file.print(",");
+  file.println(studentID);
+
+  file.close();
+
+  Serial.println("Student saved to SD card.");
+}
+
 int readnumber(void) {
   int num = 0;
 
@@ -114,7 +143,7 @@ void loop()                     // run over and over again
 {
   isStorageFull();
   Serial.println("Ready to enroll a fingerprint!");
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   Serial.println("Please type the Student ID you want to save this finger as...");
 
   studentID = readnumber();
@@ -283,6 +312,7 @@ uint8_t getFingerprintEnroll() {
     Serial.println("Stored!");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
     id++;
+    saveStudent(id, studentID);
     delay(5000);
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
