@@ -1,49 +1,84 @@
 {
   "data": {
-    "date": "2026-02-18",
+    "date": "2026-02-23",
     "events": [
       {
-        "startTime": "09:00",
-        "endTime": "10:25",
-        "title": "Period 5"
+        "startTime": "08:00",
+        "endTime": "08:50",
+        "title": "Period 1"
       },
       {
-        "startTime": "10:25",
-        "endTime": "11:05",
-        "title": "CT: School Wide Prayer & Ash Service ***"
+        "startTime": "08:50",
+        "endTime": "08:56",
+        "title": "Transition"
       },
       {
-        "startTime": "11:05",
-        "endTime": "11:20",
+        "startTime": "08:56",
+        "endTime": "09:41",
+        "title": "Period 2"
+      },
+      {
+        "startTime": "09:41",
+        "endTime": "09:47",
+        "title": "Transition"
+      },
+      {
+        "startTime": "09:47",
+        "endTime": "10:32",
+        "title": "Period 3"
+      },
+      {
+        "startTime": "10:32",
+        "endTime": "10:47",
         "title": "Break"
       },
       {
-        "startTime": "11:20",
-        "endTime": "11:25",
+        "startTime": "10:47",
+        "endTime": "10:52",
         "title": "Transition"
       },
       {
-        "startTime": "11:25",
-        "endTime": "12:45",
-        "title": "Period 6"
+        "startTime": "10:52",
+        "endTime": "11:37",
+        "title": "Period 4"
       },
       {
-        "startTime": "12:45",
-        "endTime": "13:15",
+        "startTime": "11:37",
+        "endTime": "11:42",
+        "title": "Transition"
+      },
+      {
+        "startTime": "11:42",
+        "endTime": "12:27",
+        "title": "Period 5"
+      },
+      {
+        "startTime": "12:27",
+        "endTime": "12:59",
         "title": "Lunch"
       },
       {
-        "startTime": "13:15",
-        "endTime": "13:20",
+        "startTime": "12:59",
+        "endTime": "13:04",
         "title": "Transition"
       },
       {
-        "startTime": "13:20",
+        "startTime": "13:04",
+        "endTime": "13:49",
+        "title": "Period 6"
+      },
+      {
+        "startTime": "13:49",
+        "endTime": "13:55",
+        "title": "Transition"
+      },
+      {
+        "startTime": "13:55",
         "endTime": "14:40",
         "title": "Period 7"
       }
     ]
   },
-  "lastUpdated": "2026-02-18T19:47:37.652Z",
+  "lastUpdated": "2026-02-23T21:02:26.377Z",
   "isUpdating": false
 }

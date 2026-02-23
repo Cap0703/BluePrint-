@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import session from 'express-session';
 import cors from 'cors';
 import crypto from 'crypto';
+import { get } from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -664,6 +665,18 @@ app.post('/api/scanner/auth/login', async (req, res) => {
   } catch (err) {
     console.error('Login Error:', err);
     return res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+app.get('/api/scanner/key_me', verifyToken, async (req, res) => {
+  try {
+    const result = getDailyKey();
+    res.json({
+      key: result
+    });
+  } catch (err) {
+    console.error('Error fetching daily key:', err);
+    res.status(500).json({ error: 'Failed to fetch daily key' });
   }
 });
 
