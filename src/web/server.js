@@ -9,6 +9,7 @@ import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import session from 'express-session';
 import cors from 'cors';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,8 @@ app.use(session({
 }));
 
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
+
+const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -67,7 +70,7 @@ function redirectIfNotAuthenticated(req, res, next) {
   const token = req.session.user?.token || req.headers.authorization?.split(' ')[1];
   
   if (!token) {
-    return res.redirect('/login.html');
+    return res.redirect('/login');
   }
 
   try {
@@ -75,7 +78,7 @@ function redirectIfNotAuthenticated(req, res, next) {
     req.user = decoded;
     next();
   } catch (err) {
-    return res.redirect('/login.html');
+    return res.redirect('/login');
   }
 }
 
@@ -301,6 +304,45 @@ async function assignPeriodsToLogs() {
 
 
 
+/*-------------------------------------- Encryption Functions --------------------------------------*/
+function getDailyKey(dateString = null) {
+  const date = dateString || new Date().toISOString().split('T')[0];
+  return crypto
+    .createHmac('sha256', MASTER_KEY)
+    .update(date)
+    .digest()
+    .subarray(0, 32);
+}
+
+function encrypt(text) {
+  const key = getDailyKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+  return {
+    encryptedData: encrypted,
+    iv: iv.toString('hex'),
+    authTag: authTag.toString('hex'),
+    date: new Date().toISOString().split('T')[0]
+  };
+}
+
+function decrypt(encryptedData, ivHex, authTagHex, date) {
+  const key = getDailyKey(date);
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    key,
+    Buffer.from(ivHex, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+
 /*---------------------------------------- App Authentication ----------------------------------------------*/
 app.post('/api/students', verifyToken, requireRole('administrator'), async (req, res) => {
   let { student_id, first_name, last_name, password, uuid } = req.body;
@@ -472,9 +514,22 @@ app.post('/api/app/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
+  const { student_id } = req.body;
+  if (!student_id) {
+    return res.status(400).json({ error: 'Student ID is required' });
+  }
+  try {
+    const encrypted = encrypt(student_id);
+    res.json(encrypted);
+  } catch (err) {
+    console.error('Encryption error:', err);
+    res.status(500).json({ error: 'Failed to encrypt student ID' });
+  }
+});
 
 
-/*---------------------------------------- App Authentication ----------------------------------------------*/
+/*---------------------------------------- Scanner Authentication ----------------------------------------------*/
 app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
   const { SCANNER_ID, SCANNER_LOCATION, SCANNER_PASSWORD } = req.body;
   if (!SCANNER_ID || !SCANNER_LOCATION || !SCANNER_PASSWORD) {
@@ -910,7 +965,7 @@ app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
 
 
 /*----------------------------------------Routes----------------------------------------*/
-app.get('/login.html', (req, res) => {
+app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 

@@ -4,7 +4,7 @@ async function loadUserInfo() {
   try {
     const token = localStorage.getItem('auth_token');
     if (!token) {
-      window.location.href = '/login.html';
+      window.location.href = '/login';
       return;
     }
     const response = await fetch('/api/auth/me', {
@@ -15,7 +15,7 @@ async function loadUserInfo() {
     });
     if (!response.ok) {
       localStorage.removeItem('auth_token');
-      window.location.href = '/login.html';
+      window.location.href = '/login';
       return;
     }
     currentUser = await response.json();
@@ -23,7 +23,7 @@ async function loadUserInfo() {
   } catch (err) {
     console.error('Error loading user info:', err);
     localStorage.removeItem('auth_token');
-    window.location.href = '/login.html';
+    window.location.href = '/login';
   }
 }
 
@@ -73,7 +73,7 @@ async function logout() {
     console.error('Logout error:', err);
   } finally {
     localStorage.removeItem('auth_token');
-    window.location.href = '/login.html';
+    window.location.href = '/login';
   }
 }
 
