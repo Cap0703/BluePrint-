@@ -452,17 +452,6 @@ app.post('/api/app/auth/login', async (req, res) => {
   if (!student_id || !password) {
     return res.status(400).json({ error: 'Student ID and Password are required' });
   }
-  if (student.uuid && student.uuid !== uuid) {
-    return res.status(403).json({ error: 'This device is not authorized' });
-  }
-  if (!student.uuid) {
-    await pool.query(
-      `UPDATE students
-      SET uuid = $1
-      WHERE id = $2 AND uuid IS NULL`,
-      [uuid, student.id]
-    );
-  }
   try {
     const result = await pool.query(
       'SELECT * FROM students WHERE student_id = $1',
@@ -471,6 +460,17 @@ app.post('/api/app/auth/login', async (req, res) => {
     const student = result.rows[0];
     if (result.rowCount === 0) {
       return res.status(401).json({ error: 'Invalid Student ID or password' });
+    }
+    if (student.uuid && student.uuid !== uuid) {
+    return res.status(403).json({ error: 'This device is not authorized' });
+  }
+    if (!student.uuid) {
+      await pool.query(
+        `UPDATE students
+        SET uuid = $1
+        WHERE id = $2 AND uuid IS NULL`,
+        [uuid, student.id]
+      );
     }
     const passwordMatch = await bcryptjs.compare(
       password,
@@ -767,7 +767,7 @@ app.get('/api/auth/me', verifyToken, async (req, res) => {
 
 /*-------User Management Endpoints-------*/
 app.post('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { email, first_name, last_name, password, role } = req.body;
+  const { email, first_name, last_name, password, role, courses } = req.body;
   if (!email || !password || !first_name || !last_name || !role) {
     return res.status(400).json({ error: 'All fields required' });
   }
@@ -776,11 +776,12 @@ app.post('/api/users', verifyToken, requireRole('administrator'), async (req, re
   }
   try {
     const hashedPassword = await bcryptjs.hash(password, 10);
+    const courseArray = role === 'teacher' && courses ? courses : [];
     const result = await pool.query(`
-      INSERT INTO users (email, first_name, last_name, password_hash, role)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, email, first_name, last_name, role
-    `, [email.toLowerCase(), first_name, last_name, hashedPassword, role]);
+      INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, email, first_name, last_name, role, courses
+    `, [email.toLowerCase(), first_name, last_name, hashedPassword, role, courseArray]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -793,7 +794,8 @@ app.post('/api/users', verifyToken, requireRole('administrator'), async (req, re
 
 app.get('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at FROM users ORDER BY email ASC');
+    // include courses array in the result so front‑end can show assignments and populate edit forms
+    const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at, courses FROM users ORDER BY email ASC');
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -803,7 +805,7 @@ app.get('/api/users', verifyToken, requireRole('administrator'), async (req, res
 
 app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = $1', [req.params.id]);
+    const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at, courses FROM users WHERE id = $1', [req.params.id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -815,7 +817,7 @@ app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
 });
 
 app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { email, first_name, last_name, password, role } = req.body;
+  const { email, first_name, last_name, password, role, courses } = req.body;
   try {
     let query = 'UPDATE users SET ';
     let params = [];
@@ -849,8 +851,14 @@ app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
       params.push(role);
       paramCount++;
     }
+    if (courses !== undefined) {
+      const courseArray = role === 'teacher' && courses ? courses : [];
+      query += `courses = $${paramCount}, `;
+      params.push(courseArray);
+      paramCount++;
+    }
     query = query.slice(0, -2);
-    query += ` WHERE id = $${paramCount} RETURNING id, email, first_name, last_name, role`;
+    query += ` WHERE id = $${paramCount} RETURNING id, email, first_name, last_name, role, courses`;
     params.push(req.params.id);
     const result = await pool.query(query, params);
     if (result.rows.length === 0) {
@@ -877,6 +885,52 @@ app.delete('/api/users/:id', verifyToken, requireRole('administrator'), async (r
 });
 
 
+
+/*-------Courses Endpoints-------*/
+app.post('/api/courses', verifyToken, requireRole('administrator'), async (req, res) => {
+  const { room, period } = req.body;
+  if (!room || !period) {
+    return res.status(400).json({ error: 'Room and period are required' });
+  }
+  try {
+    const result = await pool.query(`
+      INSERT INTO courses (room, period)
+      VALUES ($1, $2)
+      RETURNING id, room, period
+    `, [room, period]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'This course already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create course' });
+  }
+});
+
+app.get('/api/courses', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, room, period FROM courses ORDER BY period ASC, room ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch courses' });
+  }
+});
+
+app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM courses WHERE id = $1 RETURNING id', [req.params.id]);
+    await pool.query('UPDATE users SET courses = array_remove(courses, $1) WHERE $1 = ANY(courses)', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    res.json({ message: 'Course deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete course' });
+  }
+});
 
 /*-------Calendar Endpoints-------*/
 app.get('/api/calendar/today', async (req, res) => {
@@ -994,7 +1048,7 @@ app.get('/analytics', redirectIfNotAuthenticated, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'analytics.html'));
 });
 
-app.get('/master_logs', redirectIfNotAuthenticated, (req, res) => {
+app.get('/master_logs', redirectIfNotAuthenticated, requireRole('administrator'), (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'master_logs.html'));
 });
 
@@ -1014,11 +1068,11 @@ app.get('/scanners', redirectIfNotAuthenticated, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'connected_scanners.html'));
 });
 
-app.get('/settings', redirectIfNotAuthenticated, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'pages', 'settings.html'));
+app.get('/app_settings', redirectIfNotAuthenticated, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pages', 'app_settings.html'));
 });
 
-app.get('/admin', redirectIfNotAuthenticated, (req, res) => {
+app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pages', 'admin.html'));
 });
 

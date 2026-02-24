@@ -19,6 +19,8 @@ async function loadUserInfo() {
       return;
     }
     currentUser = await response.json();
+    // make user available globally for other scripts
+    window.currentUser = currentUser;
     updateNavbarWithUser();
   } catch (err) {
     console.error('Error loading user info:', err);
@@ -58,6 +60,30 @@ function updateNavbarWithUser() {
   `;
   navbar.appendChild(userSection);
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  filterNavByRole();
+}
+
+function filterNavByRole() {
+  if (!currentUser || currentUser.role === 'administrator') return;
+  window.currentUser = currentUser;
+  const hideLinks = () => {
+    const protectedPages = ['admin', 'master_logs', 'scanners', 'app_settings'];
+    let foundOne = false;
+    protectedPages.forEach(page => {
+      const link = document.querySelector(`.navbar-link[data-page="${page}"]`);
+      if (link && link.parentElement) {
+        link.parentElement.style.display = 'none';
+        foundOne = true;
+      }
+    });
+    if (!foundOne) {
+      setTimeout(hideLinks, 100);
+    }
+  };
+  if (typeof hideLinksForNonAdmin === 'function') {
+    hideLinksForNonAdmin();
+  }
+  hideLinks();
 }
 
 async function logout() {
@@ -77,4 +103,8 @@ async function logout() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', loadUserInfo);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', loadUserInfo);
+} else {
+  loadUserInfo();
+}

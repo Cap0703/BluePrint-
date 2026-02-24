@@ -13,6 +13,7 @@ export const pool = new Pool({
 export async function initializeDatabase() {
     await initWebUsers();
     await initAppUsers();
+    await initCourses();
     await initUserSettings();
     await initNotifications();
     await initLogs();
@@ -112,6 +113,26 @@ async function initScanners() {
         console.error('Error initializing scanners table:', err);
     }
     finally {
+        client.release();
+    }
+}
+
+async function initCourses() {
+  const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS courses (
+                id SERIAL PRIMARY KEY,
+                room VARCHAR(50) NOT NULL,
+                period VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(room, period)
+            );
+        `);
+        console.log('Courses table initialized.');
+    } catch (err) {
+        console.error('Error initializing courses table:', err);
+    } finally {
         client.release();
     }
 }

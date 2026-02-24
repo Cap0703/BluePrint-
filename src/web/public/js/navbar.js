@@ -24,9 +24,23 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem("navbarPinned", pinned);
       });
       setActiveNavLink();
+      const authScript = document.createElement('script');
+      authScript.src = '/js/auth.js';
+      document.body.appendChild(authScript);
     })
     .catch(console.error);
 });
+
+function hideLinksForNonAdmin() {
+  if (!window.currentUser || window.currentUser.role === 'administrator') return;
+  const protectedPages = ['admin', 'master_logs', 'scanners', 'app_settings'];
+  protectedPages.forEach(page => {
+    const link = document.querySelector(`.navbar-link[data-page="${page}"]`);
+    if (link && link.parentElement) {
+      link.parentElement.style.display = 'none';
+    }
+  });
+}
 
 function setActiveNavLink() {
   const currentPath = window.location.pathname;
