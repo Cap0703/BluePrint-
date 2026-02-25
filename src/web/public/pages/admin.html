@@ -265,6 +265,13 @@
                         <option value="Period 2">Period 2</option>
                         <option value="Period 3">Period 3</option>
                         <option value="Period 4">Period 4</option>
+                        <option value="Period 5">Period 5</option>
+                        <option value="Period 6">Period 6</option>
+                        <option value="Period 7">Period 7</option>
+                        <option value="Academic Support">Academic Support</option>
+                        <option value="School Wide Mass">School Wide Mass</option>
+                        <option value="Faith Family">Faith Family</option>
+                        <option value="Club">Club</option>
                     </select>
                 </div>
                 <button type="submit" class="btn-primary">
@@ -327,7 +334,6 @@
         let allCourses = [];
         const token = localStorage.getItem('auth_token');
         document.addEventListener('DOMContentLoaded', async () => {
-            // make sure courses are fetched first so we can render readable names in the users table
             await loadCourses();
             await loadUsers();
             setupCourseForm();

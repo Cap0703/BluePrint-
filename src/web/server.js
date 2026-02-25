@@ -188,13 +188,13 @@ function getFallbackPeriods() {
       endTime: "09:25"
     },
     {
-      title: "Period 2", 
+      title: "Period 2",
       startTime: "09:30",
       endTime: "10:50"
     },
     {
       title: "Period 3",
-      startTime: "11:10", 
+      startTime: "11:10",
       endTime: "12:30"
     },
     {
@@ -205,24 +205,46 @@ function getFallbackPeriods() {
   ];
 }
 
-function getPeriodsToday() {
-  if(!calendarCache.data || !calendarCache.data.events) {
-    console.log('No calendar data available, using fallback periods');
-    return getFallbackPeriods();
-  }
-  const periods = calendarCache.data.events.filter(event => {
-    const title = event.title.toLowerCase();
-    const isPeriod = !(title.includes('lunch') || title.includes('break') || title.includes('transition'));
-    if (isPeriod) {
-      console.log(`Found period: ${event.title} (${event.startTime} - ${event.endTime})`);
-    }
-    return isPeriod;
+function extractPeriods(events) {
+  if (!Array.isArray(events)) return [];
+  const periods = events.filter(event => {
+    const title = (event.title || '').toLowerCase();
+    return !(title.includes('lunch') || title.includes('break') || title.includes('transition'));
   });
-  if (periods.length === 0) {
-    console.log('No periods found in calendar data, using fallback');
-    return getFallbackPeriods();
-  }
+  if (periods.length === 0) return [];
   return periods;
+}
+
+async function getPeriodsForDate(dateString) {
+  if (
+    calendarCache.data &&
+    calendarCache.data.date === dateString &&
+    !shouldUpdateCache()
+  ) {
+    const periods = extractPeriods(calendarCache.data.events);
+    if (periods.length > 0) {
+      return periods;
+    }
+  }
+  try {
+    console.log(`fetching calendar for ${dateString}`);
+    const data = await fetchCalendarFromAPI(dateString);
+    if (data && data.events) {
+      saveCalendarCache(data);
+      const periods = extractPeriods(data.events);
+      if (periods.length > 0) {
+        return periods;
+      }
+    }
+  } catch (err) {
+    console.error(`failed to retrieve calendar for ${dateString}:`, err);
+  }
+  return getFallbackPeriods();
+}
+
+function getPeriodsToday() {
+  const today = new Date().toISOString().split('T')[0];
+  return extractPeriods(calendarCache.data?.events) || getFallbackPeriods();
 }
 
 loadCalendarCache();
@@ -232,8 +254,9 @@ loadCalendarCache();
 /*----------------------------------------Log Functions----------------------------------------*/
 
 function assignPeriodForLog(log, periods) {
+  console.log(log.id, 'scanned at', log.time_scanned, 'checking against periods:', periods.map(p => `${p.title} (${p.startTime}-${p.endTime})`));
   if (!log.time_scanned) {
-    console.log('❌ No time_scanned for log:', log.id);
+    console.log('No time_scanned for log:', log.id);
     return null;
   }
   const logTime = log.time_scanned.split(" ")[1];
@@ -241,45 +264,29 @@ function assignPeriodForLog(log, periods) {
     console.log('Invalid timestamp format for log:', log.id, log.time_scanned);
     return null;
   }
-
+  let earlyBuffer = 10;
   const [logHour, logMinute] = logTime.split(":").map(Number);
   const logTotalMinutes = logHour * 60 + logMinute;
-
   for (const p of periods) {
     const [startHour, startMinute] = p.startTime.split(":").map(Number);
     const [endHour, endMinute] = p.endTime.split(":").map(Number);
     const startTotalMinutes = startHour * 60 + startMinute;
     const endTotalMinutes = endHour * 60 + endMinute;
-    const earlyTotalMinutes = startTotalMinutes - 10; // 10-min early buffer
-
+    const earlyTotalMinutes = startTotalMinutes - earlyBuffer;
     if (logTotalMinutes >= earlyTotalMinutes && logTotalMinutes <= endTotalMinutes) {
+      console.log(`Assigning period "${p.title}" to log ${log.id} (scanned at ${logTime})`);
       return p.title;
     }
   }
+  console.log(`Unable to match any period for log ${log.id} scanned at ${logTime}; considered periods:`, periods);
   return null;
-}
-
-function getPeriodsForDate(dateString) {
-  if (!calendarCache.data || !calendarCache.lastUpdated) {
-    return getFallbackPeriods();
-  }
-  const cacheDate = new Date(calendarCache.lastUpdated).toISOString().split('T')[0];
-  if (cacheDate !== dateString) {
-    return getFallbackPeriods();
-  }
-  const events = calendarCache.data.events || [];
-  const periods = events.filter(event => {
-    const title = event.title.toLowerCase();
-    return !(title.includes('lunch') || title.includes('break') || title.includes('transition'));
-  });
-  return periods.length > 0 ? periods : getFallbackPeriods();
 }
 
 async function assignPeriodsToLogs() {
   try {
-    const result = await pool.query("SELECT * FROM logs WHERE period IS NULL OR period = ''");
+    const result = await pool.query("SELECT * FROM logs WHERE period IS NULL OR period = '' OR period = 'na'");
+    console.log(`Found ${result.rows.length} logs without assigned periods`);
     const logsByDate = {};
-    
     result.rows.forEach(log => {
       const date = log.date_scanned;
       if (!logsByDate[date]) {
@@ -287,20 +294,41 @@ async function assignPeriodsToLogs() {
       }
       logsByDate[date].push(log);
     });
-
     for (const date of Object.keys(logsByDate)) {
-      const periods = getPeriodsForDate(date);
+      const periods = await getPeriodsForDate(date);
       for (const log of logsByDate[date]) {
         const period = assignPeriodForLog(log, periods);
         if (period) {
           await pool.query("UPDATE logs SET period = $1 WHERE id = $2", [period, log.id]);
-          console.log(`✅ Assigned ${period} to log ${log.id}`);
+          console.log(`Assigned ${period} to log ${log.id}`);
+        } else {
+          console.log(`No period assigned for log ${log.id}, leaving blank`);
         }
       }
     }
   } catch (err) {
     console.error("Error assigning periods:", err);
   }
+}
+
+function convertTo24HourFormat(time12h) {
+  if (!time12h) return null;
+  const time = time12h.trim();
+  const regex = /^(\d{1,2}):(\d{2}):(\d{2})\s(AM|PM)$/i;
+  const match = time.match(regex);
+  if (!match) {
+    return time;
+  }
+  let hours = parseInt(match[1]);
+  const minutes = match[2];
+  const seconds = match[3];
+  const period = match[4].toUpperCase();
+  if (period === 'PM' && hours !== 12) {
+    hours += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours = 0;
+  }
+  return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
 }
 
 
@@ -935,16 +963,13 @@ app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async 
 /*-------Calendar Endpoints-------*/
 app.get('/api/calendar/today', async (req, res) => {
   try {
-    if (shouldUpdateCache()) {
-      const data = await fetchCalendarFromAPI();
-      saveCalendarCache(data);
-    }
-    const response = {
-      events: calendarCache.data?.events || getFallbackPeriods(),
+    const today = new Date().toISOString().split('T')[0];
+    const periods = await getPeriodsForDate(today);
+    res.json({
+      events: periods,
       lastUpdated: calendarCache.lastUpdated,
-      date: calendarCache.data?.date || new Date().toISOString().split('T')[0]
-    };
-    res.json(response);
+      date: today
+    });
   } catch (err) {
     console.error(err);
     res.json({
@@ -973,8 +998,7 @@ app.get('/api/logs', verifyToken, async (req, res) => {
 });
 
 app.post('/api/logs', verifyToken, async (req, res) => {
-//app.post('/api/logs', async (req, res) => {
-  const {
+  let {
     period,
     scanner_location,
     scanner_id,
@@ -986,6 +1010,18 @@ app.post('/api/logs', verifyToken, async (req, res) => {
     status
   } = req.body;
   try {
+    if (date_scanned && time_scanned) {
+      const time24h = convertTo24HourFormat(time_scanned);
+      const fullTimestamp = `${date_scanned} ${time24h}`;
+      const periods = await getPeriodsForDate(date_scanned);
+      const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
+      if (computed) {
+        period = computed;
+        console.log(`Computed period for new log: ${period}`);
+      } else {
+        console.log('Could not compute period for new log, will fill later');
+      }
+    }
     await pool.query(`
       INSERT INTO logs (
         period,
@@ -1000,8 +1036,7 @@ app.post('/api/logs', verifyToken, async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [period, scanner_location, scanner_id, student_id, first_name, last_name, time_scanned, date_scanned, status]);
     await assignPeriodsToLogs();
-    console.log("Holy Brady ts works")
-;    res.status(201).json({ message: 'Log entry created successfully' });
+    res.status(201).json({ message: 'Log entry created successfully' });
   } catch (err) {
     console.error('Error creating log entry:', err);
     res.status(500).json({ error: 'Failed to create log entry' });
@@ -1079,8 +1114,22 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 
 
 /*----------------------------------------Start Server----------------------------------------*/
-await initializeDatabase();
-
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
-});
+async function startServer() {
+  await initializeDatabase();
+  app.listen(process.env.PORT, () => {
+    console.log(`Server running on port ${process.env.PORT}`);
+  });
+}
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
+export {
+  getFallbackPeriods,
+  extractPeriods,
+  assignPeriodForLog,
+  getPeriodsForDate,
+  calendarCache
+};

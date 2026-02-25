@@ -123,8 +123,12 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const formData = new FormData(form);
         const logData = Object.fromEntries(formData.entries());
-        logData.time_scanned = new Date().toLocaleTimeString();
-        logData.date_scanned = new Date().toISOString().split('T')[0];
+        if (!logData.time_scanned || logData.time_scanned.trim() === '') {
+            logData.time_scanned = new Date().toLocaleTimeString();
+        }
+        if (!logData.date_scanned || logData.date_scanned.trim() === '') {
+            logData.date_scanned = new Date().toISOString().split('T')[0];
+        }
         try {
             await fetch('/api/logs', {
                 method: 'POST',
