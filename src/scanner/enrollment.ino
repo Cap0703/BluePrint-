@@ -21,6 +21,8 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
+#include "FS.h"
+#include "LittleFS.h"
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -38,8 +40,12 @@ SoftwareSerial mySerial(2, 3);
 
 #define RX_GPIO 16
 #define TX_GPIO 17
-
 #define SD_CS 5
+
+// Explicit SPI pins for ESP32 VSPI
+#define SPI_SCK  18
+#define SPI_MISO 19
+#define SPI_MOSI 23
 
 #define FINGERPRINT_LED_PINK 0x01
 #define FINGERPRINT_LED_GREEN 0x04
@@ -59,24 +65,27 @@ HardwareSerial mySerial(2);
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
-  while (!Serial);  // For Yun/Leo/Micro/Zero/...
+  while (!Serial);
   delay(100);
-  Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
-  
-
-  // set the data rate for the sensor serial port
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
-  if (!SD.begin(SD_CS)) {
-    Serial.println("SD Card Mount Failed");
-    return;
+  finger.begin(57600);
+
+  if (!finger.verifyPassword()) {
+    Serial.println("Fingerprint sensor not found!");
+    while (1) delay(1);
   }
 
-  Serial.println("SD Card Ready");
+  if (!LittleFS.begin(true)) {
+  Serial.println("LittleFS Mount Failed");
+  return;
+  }
+
+Serial.println("LittleFS Ready");
   id = getNextFreeID();
+  configSD("/students.csv");
 }
 
 int getNextFreeID() {
@@ -86,6 +95,25 @@ int getNextFreeID() {
     }
   }
   return -1; // no free slots
+}
+
+void configSD(const char * path) {
+  Serial.println("Checking LittleFS file...");
+
+  if (!LittleFS.exists(path)) {
+    File file = LittleFS.open(path, FILE_WRITE);
+    if (!file) {
+      Serial.println("ERROR: Could not create file!");
+      return;
+    }
+    Serial.println("New file detected. Writing header...");
+    file.println("FingerprintID,StudentID");
+    file.close();
+  } else {
+    Serial.println("File already contains data.");
+  }
+
+  Serial.println("LittleFS file ready.");
 }
 
 void isStorageFull() {
@@ -111,22 +139,21 @@ void isStorageFull() {
   }
 }
 
-void saveStudent(int id, int studentID) {
+void saveStudent(int fingerprintID, int studentID) {
+  Serial.println("Saving to LittleFS...");
 
-  File file = SD.open("/students.csv", FILE_APPEND);
+  File file = LittleFS.open("/students.csv", FILE_APPEND);
   if (!file) {
-    Serial.println("Failed to open file");
+    Serial.println("Failed to open file.");
     return;
   }
 
-  // Save in CSV format
-  file.print(id);
+  file.print(fingerprintID);
   file.print(",");
   file.println(studentID);
-
   file.close();
 
-  Serial.println("Student saved to SD card.");
+  Serial.println("Saved successfully.");
 }
 
 int readnumber(void) {
