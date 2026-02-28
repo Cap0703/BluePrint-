@@ -18,18 +18,19 @@
 #include <Adafruit_Fingerprint.h>
 #include <WiFi.h> 
 #include <HTTPClient.h>
-#include time.h
+#include <time.h>
 
 const char* ssid = "BraveWeb";
 const char* password = "Br@veW3b";
-const SCANNER_ID = 1;
-const SCANNER_LOC = 204;
+const char* SCANNER_ID = "1";
+const char* SCANNER_LOCATION = "204";
+const char* SCANNER_PASSWORD = "BluePrint";
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
-const SCANNER_PASSWORD = "BluePrint";
+String authToken = "";
 
-String serverEndpoint = "http://10.20.11.255:3000";
+String serverEndpoint = "http://104.174.150.247:38000";
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -172,7 +173,7 @@ uint8_t getFingerprintID() {
   // found a match!
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
   Serial.print(" with confidence of "); Serial.println(finger.confidence);
-  sendWebRequest(finger.fingerID);
+  sendLog(finger.fingerID);
 
   return finger.fingerID;
 }
@@ -214,57 +215,64 @@ void getDateTime(){
   timeStr = String(timeBuffer);
 }
 
-String signIn(){
-  String result;
-  String serverPath = serverEndpoint + "/api/scanner/auth/login";
-  WiFiClient client;
+bool signIn(){
   HTTPClient http;
-  http.begin(client, serverPath);
+  http.begin(serverEndpoint + "/api/scanner/auth/login");
   http.addHeader("Content-Type", "application/json");
-  String httpRequestData = "{";
-  httpRequestData += "\"SCANNER_ID\":" + String(SCANNER_ID) + ",";
-  httpRequestData += "\"SCANNER_LOCATION\":" + String(SCANNER_LOC) + ",";
-  httpRequestData += "\"SCANNER_PASSWORD\":" + String(SCANNER_PASSWORD) + "\"";
-  httpRequestData += "}";
-  int httpResponseCode = http.POST(httpRequestData);
-  if (httpResponseCode > 0) {
-    String payload = http.getString();
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, payload);
-    if (!error) {
-      result = doc["token"].as<String>();
-    }
+  StaticJsonDocument<256> doc;
+  doc["SCANNER_ID"] = SCANNER_ID;
+  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+  String requestBody;
+  SerializeJson(doc, requestBody);
+  int httpResponseCode = http.POST(requestBody);
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    StaticJsonDocument<512> responseDoc;
+    authToken = responseDoc["token"].as<String>();
+    Serial.println("Successfully signed in to the website!");
+    http.end();
+    return true;
+  } else {
+    Serial.print("Failed to sign in. HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    return false;
   }
-  http.end();
-  return result;
 }
 
-void sendWebRequest(int studentID) {
-  if(WiFi.status() == WL_CONNECTED){
-    String dateScanned;
-    String timeScanned;
-    getDateTime(dateScanned, timeScanned);
-    WiFiClient client;
-    HTTPClient http;
-    String serverPath = serverEndpoint + "/api/logs";
-    http.begin(client, serverPath);
-    http.addHeader("Content-Type", "application/json");
-    String httpRequestData = "{";
-    httpRequestData += "\"period\":\"na\",";
-    httpRequestData += "\"scanner_location\":" + String(SCANNER_LOC) + ",";
-    httpRequestData += "\"scanner_id\":" + String(SCANNER_ID) + ",";
-    httpRequestData += "\"student_id\":\"" + String(studentID) + "\",";
-    httpRequestData += "\"first_name\":\"na\",";
-    httpRequestData += "\"last_name\":\"na\",";
-    httpRequestData += "\"time_scanned\":\"" + timeScanned + "\",";
-    httpRequestData += "\"date_scanned\":\"" + dateScanned + "\"";
-    httpRequestData += "}";
-    int httpResponseCode = http.POST(httpRequestData);
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseCode);
-    http.end();
+void sendLog(int studentID) {
+  if(authToken == "") {
+    Serial.println("Not authenticated with the website. Cannot send log.");
+    return;
+  }
+  HTTPClient http;
+  String dateScanned;
+  String timeScanned;
+  getDateTime(dateScanned, timeScanned);
+  String serverPath = serverEndpoint + "/api/logs";
+  http.begin(String(serverURL) + "/api/logs");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + authToken);
+  StaticJsonDocument<512> doc;
+  doc["period"] = "";
+  doc["scanner_location"] = SCANNER_LOCATION;
+  doc["scanner_id"] = SCANNER_ID;
+  doc["student_id"] = studentID;
+  doc["first_name"] = "";
+  doc["last_name"] = "";
+  doc["time_scanned"] = timeScanned;
+  doc["date_scanned"] = dateScanned;
+  doc["status"] = "present";
+  String requestBody;
+  serializeJson(doc, requestBody);
+
+  int httpResponseCode = http.POST(requestBody);
+
+  if (httpResponseCode == 201) {
+    Serial.println("Log sent successfully!");
   }
   else {
-    serial.println("Stupid ahh Brady");
+    Serial.print("Failed to send log: ");
+    Serial.println(httpResponseCode);
   }
 }
