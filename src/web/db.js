@@ -44,26 +44,50 @@ async function initAppUsers() {
 
 async function initWebUsers() {
   const client = await pool.connect();
-    try {
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                first_name VARCHAR(100),
-                last_name VARCHAR(100),
-                password_hash VARCHAR(255) NOT NULL,
-                role VARCHAR(50) NOT NULL CHECK (role IN ('teacher', 'administrator')),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                courses TEXT[] DEFAULT '{}'
-            );
-        `);
-        console.log('Web user table initialized.');
-    } catch (err) {
-        console.error('Error initializing web user table:', err);
-    } finally {
-        client.release();
+
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL CHECK (role IN ('teacher', 'administrator')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        courses TEXT[] DEFAULT '{}'
+      );
+    `);
+    console.log('Web user table initialized.');
+    const { rows } = await client.query('SELECT COUNT(*) FROM users');
+    const userCount = parseInt(rows[0].count);
+
+    if (userCount === 0) {
+      const hashedPassword = await bcrypt.hash('1Likepigs', 10);
+      await client.query(
+        `
+        INSERT INTO users 
+        (email, first_name, last_name, password_hash, role)
+        VALUES ($1, $2, $3, $4, $5)
+        `,
+        [
+          'c.oldoerp26@bosco.org',
+          'Conrad',
+          'Oldoerp',
+          hashedPassword,
+          'administrator'
+        ]
+      );
+
+      console.log('Default administrator created.');
     }
+
+  } catch (err) {
+    console.error('Error initializing web user table:', err);
+  } finally {
+    client.release();
+  }
 }
 
 async function initLogs() {
