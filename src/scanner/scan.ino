@@ -30,7 +30,7 @@ const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
 String authToken = "";
 
-String serverEndpoint = "http://104.174.150.247:38000";
+String serverEndpoint = "blueprint-tm.ddns.net";
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
