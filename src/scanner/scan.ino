@@ -18,7 +18,11 @@
 #include <Adafruit_Fingerprint.h>
 #include <WiFi.h> 
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include "LittleFS.h"
 #include <time.h>
+
+#define FINGERPRINT_LED_GREEN 0x04
 
 const char* ssid = "BraveWeb";
 const char* password = "Br@veW3b";
@@ -46,7 +50,6 @@ SoftwareSerial mySerial(2, 3);
 #define mySerial Serial1
 
 #endif
-
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
@@ -97,7 +100,7 @@ void setup()
   finger.getTemplateCount();
 
   if (finger.templateCount == 0) {
-    Serial.print("Sensor doesn't contain any fingerprint data. Please run the 'enroll' example.");
+    Serial.print("Sensor doesn't contain any fingerprint data. Please enroll students.");
   }
   else {
     Serial.println("Waiting for valid finger...");
@@ -105,8 +108,19 @@ void setup()
   }
 }
 
+int findStudent(int fingerprintID) {
+    int students[128] = {0};
+    File file = LittleFS.open("/students.bin", FILE_READ);
+    if (file) {
+        file.read((uint8_t*)students, sizeof(students));
+        file.close();
+    }
+    return students[fingerprintID];
+}
+
 void loop()                     // run over and over again
 {
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   getFingerprintID();
   delay(50);            //don't ned to run this at full speed.
 }
@@ -119,15 +133,19 @@ uint8_t getFingerprintID() {
       break;
     case FINGERPRINT_NOFINGER:
       Serial.println("No finger detected");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_IMAGEFAIL:
       Serial.println("Imaging error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
   }
 
@@ -140,18 +158,23 @@ uint8_t getFingerprintID() {
       break;
     case FINGERPRINT_IMAGEMESS:
       Serial.println("Image too messy");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_FEATUREFAIL:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_INVALIDIMAGE:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
   }
 
@@ -161,19 +184,25 @@ uint8_t getFingerprintID() {
     Serial.println("Found a print match!");
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   } else if (p == FINGERPRINT_NOTFOUND) {
     Serial.println("Did not find a match");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   } else {
     Serial.println("Unknown error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   }
 
   // found a match!
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
   Serial.print(" with confidence of "); Serial.println(finger.confidence);
-  sendLog(finger.fingerID);
+  sendLog(findStudent(finger.fingerID));
+  delay(3000);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
 
   return finger.fingerID;
 }
@@ -195,7 +224,7 @@ int getFingerprintIDez() {
   return finger.fingerID;
 }
 
-void getDateTime(){
+void getDateTime(String dateStr, String timeStr){
  struct tm timeinfo;
   
   if(!getLocalTime(&timeinfo)){
@@ -224,7 +253,7 @@ bool signIn(){
   doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
   doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
   String requestBody;
-  SerializeJson(doc, requestBody);
+  serializeJson(doc, requestBody);
   int httpResponseCode = http.POST(requestBody);
   if (httpResponseCode == 200) {
     String response = http.getString();
@@ -250,7 +279,7 @@ void sendLog(int studentID) {
   String timeScanned;
   getDateTime(dateScanned, timeScanned);
   String serverPath = serverEndpoint + "/api/logs";
-  http.begin(String(serverURL) + "/api/logs");
+  http.begin(String(serverEndpoint) + "/api/logs");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
   StaticJsonDocument<512> doc;
