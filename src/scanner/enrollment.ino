@@ -8,6 +8,9 @@
 #define MAX_FINGERPRINT_SLOTS 127
 #define STUDENTS_BIN "/students.bin"
 
+#define FINGERPRINT_LED_PINK 0x01
+#define FINGERPRINT_LED_GREEN 0x04
+
 int students[MAX_FINGERPRINT_SLOTS + 1] = {0};
 int id = 0;
 int studentID = 0;
