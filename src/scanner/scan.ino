@@ -29,6 +29,10 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
 String authToken = "";
+String pendingCommand = "";
+String lastCommandOutput = "";
+unsigned long lastCommandCheck = 0;
+const unsigned long COMMAND_CHECK_INTERVAL = 5000;
 
 String serverEndpoint = "http://104.174.150.247:38000";
 
@@ -275,4 +279,100 @@ void sendLog(int studentID) {
     Serial.print("Failed to send log: ");
     Serial.println(httpResponseCode);
   }
+}
+
+void checkForCommands() {
+  if (millis() - lastCommandCheck < COMMAND_CHECK_INTERVAL) {
+    return; // Not time to check yet
+  }
+  lastCommandCheck = millis();
+  if (authToken == "") {
+    return; // No token, can't check
+  }
+  HTTPClient http;
+  String commandEndpoint = serverEndpoint + "/api/scanners/" + SCANNER_ID + "/terminal";
+  http.begin(commandEndpoint);
+  http.addHeader("Authorization", "Bearer " + authToken);
+  int httpResponseCode = http.GET();
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    StaticJsonDocument<256> responseDoc;
+    DeserializationError error = deserializeJson(responseDoc, response);
+    if (!error && responseDoc.containsKey("command")) {
+      const char* cmdPtr = responseDoc["command"];
+      if (cmdPtr != nullptr) { // Only execute if command is not null
+        pendingCommand = String(cmdPtr);
+        if (pendingCommand.length() > 0) {
+          Serial.println("Received command: " + pendingCommand);
+          executeCommand(pendingCommand);
+        }
+      }
+    }
+  }
+  http.end();
+}
+
+void sendCommandOutput(String output) {
+  if (authToken == "") {
+    Serial.println("Not authenticated. Cannot send command output.");
+    return;
+  }
+  HTTPClient http;
+  String outputEndpoint = serverEndpoint + "/api/scanners/" + SCANNER_ID + "/terminal/output";
+  http.begin(outputEndpoint);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + authToken);
+  StaticJsonDocument<512> doc;
+  doc["output"] = output;
+  doc["timestamp"] = String(millis());
+  String requestBody;
+  serializeJson(doc, requestBody);
+  int httpResponseCode = http.POST(requestBody);
+  if (httpResponseCode == 200) {
+    Serial.println("Command output sent successfully");
+  } else {
+    Serial.print("Failed to send command output: ");
+    Serial.println(httpResponseCode);
+  }
+  http.end();
+}
+
+void executeCommand(String command) {
+  command = command.toLowerCase();
+  lastCommandOutput = "";
+  if (command == "status") {
+    lastCommandOutput = "Scanner Status: Active. Fingerprints enrolled: ";
+    lastCommandOutput += String(finger.templateCount);
+  } else if (command == "restart") {
+    lastCommandOutput = "Restarting scanner...";
+    delay(1000);
+    ESP.restart();
+  } else if (command == "wifi_info") {
+    lastCommandOutput = "WiFi SSID: ";
+    lastCommandOutput += String(ssid);
+    lastCommandOutput += " | IP: ";
+    lastCommandOutput += WiFi.localIP().toString();
+  } else if (command == "sync_time") {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+      char buffer[30];
+      strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+      lastCommandOutput = "Current time: ";
+      lastCommandOutput += String(buffer);
+    } else {
+      lastCommandOutput = "Failed to get time";
+    }
+  } else if (command == "clear_fingerprints") {
+    if (finger.deleteModel(0) == FINGERPRINT_OK) {
+      lastCommandOutput = "All fingerprints cleared";
+    } else {
+      lastCommandOutput = "Failed to clear fingerprints";
+    }
+  } else if (command.startsWith("set_location:")) {
+    String newLocation = command.substring(13);
+    lastCommandOutput = "Location set to: " + newLocation;
+  } else {
+    lastCommandOutput = "Unknown command: " + command;
+  }
+  sendCommandOutput(lastCommandOutput);
 }

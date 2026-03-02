@@ -12,20 +12,20 @@ async function fetch_logs() {
 
 function getStatusText(status) {
     switch (status) {
-        case '1': return 'On Time';
-        case '2': return 'Late';
-        case '3': return 'Absent';
-        case '4': return 'Excused';
+        case 'On Time': return 'On Time';
+        case 'Late': return 'Late';
+        case 'Absent': return 'Absent';
+        case 'Excused': return 'Excused';
         default: return 'Unknown';
     }
 }
 
 function getStatusClass(status) {
     switch (status) {
-        case '1': return 'on-time';
-        case '2': return 'late';
-        case '3': return 'absent';
-        case '4': return 'excused';
+        case 'On Time': return 'on-time';
+        case 'Late': return 'late';
+        case 'Absent': return 'absent';
+        case 'Excused': return 'excused';
         default: return '';
     }
 }
