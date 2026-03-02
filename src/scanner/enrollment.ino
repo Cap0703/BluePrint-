@@ -1,6 +1,7 @@
 #include <Adafruit_Fingerprint.h>
 #include "FS.h"
 #include "LittleFS.h"
+#include <vector>
 
 #define RX_GPIO 16
 #define TX_GPIO 17
@@ -11,6 +12,9 @@
 int id = 0;
 int studentID;
 int studentNum = 1;
+
+std::vector<int> studentIDs;
+std::vector<int> fingerprintIDs;
 
 HardwareSerial mySerial(2);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
@@ -73,7 +77,8 @@ void isStorageFull() {
     if (response == 'y' || response == 'Y') {
       if (finger.emptyDatabase() == FINGERPRINT_OK) {
         Serial.println("All fingerprints deleted.");
-        idMatrix.clear();
+        fingerprintIDs.clear();
+        studentIDs.clear();
         id = 0;
       } else {
         Serial.println("Failed to delete database.");
@@ -125,7 +130,8 @@ void loop() {
   Serial.println("Please type the Student ID you want to save this finger as...");
 
   studentID = readnumber();
-  idMatrix.push_back({id + 1, studentID});
+  fingerprintIDs.push_back(id + 1);
+  studentIDs.push_back(studentID);
 
   Serial.print("Enrolling Student ID #");
   Serial.println(studentID);
@@ -135,7 +141,7 @@ void loop() {
 uint8_t getFingerprintEnroll() {
   int p = -1;
   Serial.print("Waiting for valid finger to enroll as Student #");
-  Serial.println(idMatrix.back()[studentNum]);
+  Serial.println(studentIDs.back());
 
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
@@ -166,7 +172,7 @@ uint8_t getFingerprintEnroll() {
     p = finger.getImage();
   }
 
-  Serial.print("\nStudent ID: "); Serial.println(idMatrix.back()[studentNum]);
+  Serial.print("\nStudent ID: "); Serial.println(fingerprintIDs.back());
   Serial.print("BluePrints Stored: "); Serial.println(id);
   p = -1;
 
