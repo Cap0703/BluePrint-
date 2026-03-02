@@ -298,9 +298,7 @@ void sendLog(int studentID) {
   doc["status"] = "present";
   String requestBody;
   serializeJson(doc, requestBody);
-
   int httpResponseCode = http.POST(requestBody);
-
   if (httpResponseCode == 201) {
     Serial.println("Log sent successfully!");
   }
@@ -312,11 +310,11 @@ void sendLog(int studentID) {
 
 void checkForCommands() {
   if (millis() - lastCommandCheck < COMMAND_CHECK_INTERVAL) {
-    return; // Not time to check yet
+    return;
   }
   lastCommandCheck = millis();
   if (authToken == "") {
-    return; // No token, can't check
+    return;
   }
   HTTPClient http;
   String commandEndpoint = serverEndpoint + "/api/scanners/" + SCANNER_ID + "/terminal";
@@ -329,7 +327,7 @@ void checkForCommands() {
     DeserializationError error = deserializeJson(responseDoc, response);
     if (!error && responseDoc.containsKey("command")) {
       const char* cmdPtr = responseDoc["command"];
-      if (cmdPtr != nullptr) { // Only execute if command is not null
+      if (cmdPtr != nullptr) {
         pendingCommand = String(cmdPtr);
         if (pendingCommand.length() > 0) {
           Serial.println("Received command: " + pendingCommand);
