@@ -1,5 +1,4 @@
 #include <Adafruit_Fingerprint.h>
-#include <vector>
 #include "FS.h"
 #include "LittleFS.h"
 
@@ -9,7 +8,6 @@
 #define FINGERPRINT_LED_PINK 0x01
 #define FINGERPRINT_LED_GREEN 0x04
 
-std::vector<std::vector<int>> idMatrix;
 int id = 0;
 int studentID;
 int studentNum = 1;
@@ -87,17 +85,28 @@ void isStorageFull() {
 }
 
 void saveStudent(int fingerprintID, int sID) {
-  Serial.println("Saving to LittleFS...");
-  File file = LittleFS.open("/students.csv", FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file.");
-    return;
-  }
-  file.print(fingerprintID);
-  file.print(",");
-  file.println(sID);
-  file.close();
-  Serial.println("Saved successfully.");
+    // Read existing array or create new one
+    int students[128] = {0}; // adjust 128 to your max fingerprint count
+    
+    File file = LittleFS.open("/students.bin", FILE_READ);
+    if (file) {
+        file.read((uint8_t*)students, sizeof(students));
+        file.close();
+    }
+    
+    // Set the sID at the fingerprintID index
+    students[fingerprintID] = sID;
+    
+    // Write back
+    file = LittleFS.open("/students.bin", FILE_WRITE);
+    if (!file) {
+        Serial.println("Failed to open file.");
+        return;
+    }
+
+    file.write((uint8_t*)students, sizeof(students));
+    file.close();
+    Serial.println("Saved successfully.");
 }
 
 int readnumber(void) {
