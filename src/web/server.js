@@ -777,11 +777,8 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   }
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
-  
-  // Store command for scanner to fetch
   session.pendingCommand = cmd;
   session.commandSentTime = new Date();
-  
   res.json({ 
     message: 'Command queued for scanner',
     pending: true
@@ -791,11 +788,9 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
 app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
-  
-  // Return pending command to scanner if it exists
   if (session.pendingCommand) {
     const cmd = session.pendingCommand;
-    session.pendingCommand = null; // Clear after sending
+    session.pendingCommand = null;
     res.json({ 
       command: cmd,
       mode: session.mode 
