@@ -1,69 +1,84 @@
-/***************************************************
-  This is an example sketch for our optical Fingerprint sensor
-
-  Designed specifically to work with the Adafruit BMP085 Breakout
-  ----> http://www.adafruit.com/products/751
-
-  These displays use TTL Serial to communicate, 2 pins are required to
-  interface
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing
-  products from Adafruit!
-
-  Written by Limor Fried/Ladyada for Adafruit Industries.  
-  Small bug-fix by Michael cochez
-
-  BSD license, all text above must be included in any redistribution
- ****************************************************/
-
 #include <Adafruit_Fingerprint.h>
-#include <vector>
-#include "FS.h"
-#include "SD.h"
-#include "SPI.h"
 #include "FS.h"
 #include "LittleFS.h"
 
-
-#if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
-// For UNO and others without hardware serial, we must use software serial...
-// pin #2 is IN from sensor (GREEN wire)
-// pin #3 is OUT from arduino  (WHITE wire)
-// Set up the serial port to use softwareserial..
-SoftwareSerial mySerial(2, 3);
-
-#else
-// On Leonardo/M0/etc, others with hardware serial, use hardware serial!
-// #0 is green wire, #1 is white
-
-#endif
-
 #define RX_GPIO 16
 #define TX_GPIO 17
-#define SD_CS 5
 
-// Explicit SPI pins for ESP32 VSPI
-#define SPI_SCK  18
-#define SPI_MISO 19
-#define SPI_MOSI 23
+#define MAX_FINGERPRINT_SLOTS 127
+#define STUDENTS_BIN "/students.bin"
 
 #define FINGERPRINT_LED_PINK 0x01
 #define FINGERPRINT_LED_GREEN 0x04
 
-std::vector<std::vector<int>> idMatrix;
-// only holds 127 prints?
+int students[MAX_FINGERPRINT_SLOTS + 1] = {0};
 int id = 0;
-int studentID;
-// the above are to only be used for translating student id's to fingerprint id range
-
-int fingerID = 0;
-int studentNum = 1;
-// the above are used to more intuitively index through the matrix
-
+int studentID = 0;
 
 HardwareSerial mySerial(2);
-
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+
+void loadStudents() {
+  File file = LittleFS.open(STUDENTS_BIN, FILE_READ);
+  if (file) {
+    file.read((uint8_t*)students, sizeof(students));
+    file.close();
+    Serial.println("Student map loaded from flash.");
+  } else {
+    Serial.println("No student map found, starting fresh.");
+    memset(students, 0, sizeof(students));
+  }
+}
+
+void saveStudents() {
+  File file = LittleFS.open(STUDENTS_BIN, FILE_WRITE);
+  if (!file) {
+    Serial.println("ERROR: Could not open student map for writing!");
+    return;
+  }
+  file.write((uint8_t*)students, sizeof(students));
+  file.close();
+  Serial.println("Student map saved.");
+}
+
+int getNextFreeSlot() {
+  for (int slot = 1; slot <= MAX_FINGERPRINT_SLOTS; slot++) {
+    if (students[slot] == 0) return slot;
+  }
+  return -1;
+}
+
+void handleStorageFull() {
+  Serial.println("\nNo free fingerprint slots!");
+  Serial.println("Delete ALL stored fingerprints? (y/n)");
+
+  while (!Serial.available());
+  char response = Serial.read();
+
+  if (response == 'y' || response == 'Y') {
+    if (finger.emptyDatabase() == FINGERPRINT_OK) {
+      Serial.println("All fingerprints deleted from sensor.");
+      memset(students, 0, sizeof(students));
+      saveStudents();
+      id = 1;
+    } else {
+      Serial.println("Failed to delete sensor database.");
+    }
+  } else {
+    Serial.println("Deletion cancelled. Halting.");
+    while (1) delay(1000);
+  }
+}
+
+int readPositiveInt() {
+  int num = 0;
+  while (num <= 0) {
+    while (!Serial.available());
+    num = Serial.parseInt();
+    if (num <= 0) Serial.println("Please enter a number greater than 0.");
+  }
+  return num;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -74,294 +89,121 @@ void setup() {
   finger.begin(57600);
 
   if (!finger.verifyPassword()) {
-    Serial.println("Fingerprint sensor not found!");
+    Serial.println("Fingerprint sensor not found! Check wiring.");
     while (1) delay(1);
   }
+  Serial.println("Fingerprint sensor OK.");
 
   if (!LittleFS.begin(true)) {
-  Serial.println("LittleFS Mount Failed");
-  return;
+    Serial.println("LittleFS mount failed!");
+    while (1) delay(1);
   }
+  Serial.println("LittleFS ready.");
 
-Serial.println("LittleFS Ready");
-  id = getNextFreeID();
-  configSD("/students.csv");
-}
+  loadStudents();
 
-int getNextFreeID() {
-  for (int i = 1; i <= 127; i++) {
-    if (finger.loadModel(i) != FINGERPRINT_OK) {
-      return i;  // slot is empty
-    }
-  }
-  return -1; // no free slots
-}
-
-void configSD(const char * path) {
-  Serial.println("Checking LittleFS file...");
-
-  if (!LittleFS.exists(path)) {
-    File file = LittleFS.open(path, FILE_WRITE);
-    if (!file) {
-      Serial.println("ERROR: Could not create file!");
-      return;
-    }
-    Serial.println("New file detected. Writing header...");
-    file.println("FingerprintID,StudentID");
-    file.close();
-  } else {
-    Serial.println("File already contains data.");
-  }
-
-  Serial.println("LittleFS file ready.");
-}
-
-void isStorageFull() {
+  id = getNextFreeSlot();
   if (id == -1) {
-    Serial.println("No free fingerprint slots.");
-    Serial.println("Delete all stored fingerprints? (y/n)");
-
-    while (!Serial.available());
-    char response = Serial.read();
-
-    if (response == 'y' || response == 'Y') {
-      if (finger.emptyDatabase() == FINGERPRINT_OK) {
-        Serial.println("All fingerprints deleted.");
-        idMatrix.clear();   // clear your local mapping too
-      } else {
-        Serial.println("Failed to delete database.");
-        return;
-      }
-    } else {
-      Serial.println("Enrollment cancelled. \n CAPACITY REACHED: CONTINUING TO ENROLL WILL DELETE DATA");
-      return;
-    }
+    handleStorageFull();
   }
+  Serial.print("Next free slot: #");
+  Serial.println(id);
 }
 
-void saveStudent(int fingerprintID, int studentID) {
-  Serial.println("Saving to LittleFS...");
-
-  File file = LittleFS.open("/students.csv", FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file.");
-    return;
-  }
-
-  file.print(fingerprintID);
-  file.print(",");
-  file.println(studentID);
-  file.close();
-
-  Serial.println("Saved successfully.");
-}
-
-int readnumber(void) {
-  int num = 0;
-
-  while (num == 0) {
-    while (!Serial.available());
-    num = Serial.parseInt();
-  }
-  return num;
-}
-
-void loop()                     // run over and over again
-{
-  isStorageFull();
-  Serial.println("Ready to enroll a fingerprint!");
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
-  Serial.println("Please type the Student ID you want to save this finger as...");
-
-  studentID = readnumber();
-
-  id++;
-  idMatrix.push_back({id, studentID});
-
-  if (id == 0) {// ID #0 not allowed, try again!
-     return;
-  }
-  Serial.print("Enrolling ID #");
-  Serial.println(studentID);
-  id--;
-  while (!getFingerprintEnroll() );
-}
-
-uint8_t getFingerprintEnroll() {
-
+uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
-  Serial.print("Waiting for valid finger to enroll as Student #"); Serial.println(idMatrix.back()[studentNum]);
+
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  Serial.println("Place finger on sensor...");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    switch (p) {
-    case FINGERPRINT_OK:
-      Serial.println("Image taken");
-      break;
-    case FINGERPRINT_NOFINGER:
-      Serial.print(".");
-      break;
-    case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
-      break;
-    case FINGERPRINT_IMAGEFAIL:
-      Serial.println("Imaging error");
-      break;
-    default:
-      Serial.println("Unknown error");
-      break;
-    }
+    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
+    if (p != FINGERPRINT_OK)       { Serial.println("\nImaging error, try again."); }
   }
-
-  // OK success!
 
   p = finger.image2Tz(1);
-  switch (p) {
-    case FINGERPRINT_OK:
-      Serial.println("Image converted");
-      break;
-    case FINGERPRINT_IMAGEMESS:
-      Serial.println("Image too messy");
-      return p;
-    case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
-      return p;
-    case FINGERPRINT_FEATUREFAIL:
-      Serial.println("Could not find fingerprint features");
-      return p;
-    case FINGERPRINT_INVALIDIMAGE:
-      Serial.println("Could not find fingerprint features");
-      return p;
-    default:
-      Serial.println("Unknown error");
-      return p;
+  if (p != FINGERPRINT_OK) {
+    Serial.println("Conversion failed. Try again.");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(3000);
+    return p;
   }
-
-  Serial.println("Remove finger");
+  Serial.println("\nFirst scan OK. Remove finger.");
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
-  p = 0;
-  while (p != FINGERPRINT_NOFINGER) {
-    p = finger.getImage();
-  }
+  while (finger.getImage() != FINGERPRINT_NOFINGER);
 
-  Serial.print("\nStudent ID: ");
-  Serial.print(idMatrix.back()[studentNum]);
-  Serial.print("\nBluePrints Stored: "); 
-  Serial.println(id);
   p = -1;
-
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
-  Serial.println("Place same finger again");
+  Serial.println("Place the SAME finger again...");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    switch (p) {
-    case FINGERPRINT_OK:
-      //Serial.println("Image taken");
-      break;
-    case FINGERPRINT_NOFINGER:
-      Serial.print(".");
-      break;
-    case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      break;
-    case FINGERPRINT_IMAGEFAIL:
-      Serial.println("Imaging error");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      break;
-    default:
-      Serial.println("Unknown error");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      break;
-    }
+    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
+    if (p != FINGERPRINT_OK)       { Serial.println("\nImaging error, try again."); }
   }
 
   p = finger.image2Tz(2);
-  switch (p) {
-    case FINGERPRINT_OK:
-      //Serial.println("Image converted");
-      break;
-    case FINGERPRINT_IMAGEMESS:
-      Serial.println("Image too messy");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      return p;
-    case FINGERPRINT_PACKETRECIEVEERR:
-      Serial.println("Communication error");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      return p;
-    case FINGERPRINT_FEATUREFAIL:
-      Serial.println("Could not find fingerprint features");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      return p;
-    case FINGERPRINT_INVALIDIMAGE:
-      Serial.println("Could not find fingerprint features");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      return p;
-    default:
-      Serial.println("Unknown error");
-      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-      delay(5000);
-      return p;
+  if (p != FINGERPRINT_OK) {
+    Serial.println("Conversion failed. Try again.");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
+    delay(3000);
+    return p;
   }
-
-  Serial.print("Creating model for #");  Serial.println(id + 1);
 
   p = finger.createModel();
-  if (p == FINGERPRINT_OK) {
-    Serial.println("Prints matched!");
-  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
-    Serial.println("Communication error");
+  if (p == FINGERPRINT_ENROLLMISMATCH) {
+    Serial.println("Fingers did not match! Try again.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
+    delay(3000);
     return p;
-  } else if (p == FINGERPRINT_ENROLLMISMATCH) {
-    Serial.println("Fingerprints did not match");
+  }
+  if (p != FINGERPRINT_OK) {
+    Serial.println("Model creation error.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
-    return p;
-  } else {
-    Serial.println("Unknown error");
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
+    delay(3000);
     return p;
   }
 
-  Serial.print("ID "); Serial.println(id + 1);
-  p = finger.storeModel(id);
-  if (p == FINGERPRINT_OK) {
-    Serial.println("Stored!");
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
-    id++;
-    saveStudent(id, studentID);
-    delay(5000);
-  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
-    Serial.println("Communication error");
+  p = finger.storeModel(slot);
+  if (p != FINGERPRINT_OK) {
+    Serial.println("Failed to store model on sensor.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
-    return p;
-  } else if (p == FINGERPRINT_BADLOCATION) {
-    Serial.println("Could not store in that location");
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
-    return p;
-  } else if (p == FINGERPRINT_FLASHERR) {
-    Serial.println("Error writing to flash");
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
-    return p;
-  } else {
-    Serial.println("Unknown error");
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
-    delay(5000);
+    delay(3000);
     return p;
   }
 
-  return true;
+  students[slot] = sID;
+  saveStudents();
+
+  Serial.print("\nEnrolled Student #");
+  Serial.print(sID);
+  Serial.print(" at fingerprint slot #");
+  Serial.println(slot);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
+  delay(3000);
+  return FINGERPRINT_OK;
+}
+
+void loop() {
+  id = getNextFreeSlot();
+  if (id == -1) {
+    handleStorageFull();
+    return;
+  }
+
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  Serial.println("\n--- Ready to enroll ---");
+  Serial.print("Free slots remaining: ");
+  Serial.println(MAX_FINGERPRINT_SLOTS - (id - 1));
+  Serial.println("Enter Student ID to enroll:");
+
+  studentID = readPositiveInt();
+  Serial.print("Enrolling Student ID #");
+  Serial.print(studentID);
+  Serial.print(" into slot #");
+  Serial.println(id);
+
+  while (getFingerprintEnroll(id, studentID) != FINGERPRINT_OK) {
+    Serial.println("Retrying enrollment...");
+  }
 }

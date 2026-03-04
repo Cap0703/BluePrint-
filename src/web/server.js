@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 app.use(session({
@@ -253,6 +253,27 @@ loadCalendarCache();
 
 /*----------------------------------------Log Functions----------------------------------------*/
 
+function assignStatusForLog(log) {
+  if (log.status === 'Unknown') {
+    if (log.time_scanned <= getPeriodStartTime(log.period)) {
+      return 'On Time';
+    }
+    else if (log.time_scanned > getPeriodStartTime(log.period)) {
+      return 'Late';
+    }
+    else {
+      return 'Absent';
+    }
+  }
+  return log.status;
+}
+
+function getPeriodStartTime(periodTitle) {
+  const periods = getPeriodsToday();
+  const period = periods.find(p => p.title === periodTitle);
+  return period ? period.startTime : null;
+}
+
 function assignPeriodForLog(log, periods) {
   console.log(log.id, 'scanned at', log.time_scanned, 'checking against periods:', periods.map(p => `${p.title} (${p.startTime}-${p.endTime})`));
   if (!log.time_scanned) {
@@ -280,6 +301,35 @@ function assignPeriodForLog(log, periods) {
   }
   console.log(`Unable to match any period for log ${log.id} scanned at ${logTime}; considered periods:`, periods);
   return null;
+}
+
+async function assignStatusesToLogs() {
+  try {
+    const result = await pool.query("SELECT * FROM logs WHERE status IS NULL OR status = '' OR status = 'na' OR status = 'Unknown'");
+    console.log(`Found ${result.rows.length} logs without assigned statuses`);
+    const logsByDate = {};
+    result.rows.forEach(log => {
+      const date = log.date_scanned;
+      if (!logsByDate[date]) {
+        logsByDate[date] = [];
+      }
+      logsByDate[date].push(log);
+    });
+    for (const date of Object.keys(logsByDate)) {
+      const periods = await getPeriodsForDate(date);
+      for (const log of logsByDate[date]) {
+        const status = assignStatusForLog(log, periods);
+        if (status) {
+          await pool.query("UPDATE logs SET status = $1 WHERE id = $2", [status, log.id]);
+          console.log(`Assigned ${status} to log ${log.id}`);
+        } else {
+          console.log(`No status assigned for log ${log.id}, leaving blank`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error assigning statuses:", err);
+  }
 }
 
 async function assignPeriodsToLogs() {
@@ -589,6 +639,8 @@ app.get('/api/scanners', verifyToken, requireRole('administrator'), async (req, 
   }
 });
 
+
+
 app.get('/api/scanners/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, scanner_id, scanner_location, scanner_status, last_sync, battery_level FROM scanners WHERE id = $1', [req.params.id]);
@@ -708,6 +760,66 @@ app.get('/api/scanner/key_me', verifyToken, async (req, res) => {
   }
 });
 
+const scannerTerminalSessions = {};
+
+function getScannerSession(scannerId) {
+  if (!scannerTerminalSessions[scannerId]) {
+    scannerTerminalSessions[scannerId] = { mode: 'scanner' };
+  }
+  return scannerTerminalSessions[scannerId];
+}
+
+app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator'), async (req, res) => {
+  const scannerId = req.params.id;
+  const { command } = req.body;
+  if (typeof command !== 'string') {
+    return res.status(400).json({ error: 'Command must be a string' });
+  }
+  const session = getScannerSession(scannerId);
+  const cmd = command.trim();
+  session.pendingCommand = cmd;
+  session.commandSentTime = new Date();
+  res.json({ 
+    message: 'Command queued for scanner',
+    pending: true
+  });
+});
+
+app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
+  const scannerId = req.params.id;
+  const session = getScannerSession(scannerId);
+  if (session.pendingCommand) {
+    const cmd = session.pendingCommand;
+    session.pendingCommand = null;
+    res.json({ 
+      command: cmd,
+      mode: session.mode 
+    });
+  } else {
+    res.json({ 
+      command: null,
+      mode: session.mode 
+    });
+  }
+});
+
+app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
+  const scannerId = req.params.id;
+  const { output } = req.body;
+  const session = getScannerSession(scannerId);
+  session.lastOutput = output;
+  session.lastOutputTime = new Date();
+  res.json({ message: 'Output received' });
+});
+
+app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administrator'), (req, res) => {
+  const scannerId = req.params.id;
+  const session = getScannerSession(scannerId);
+  res.json({ 
+    output: session.lastOutput || '', 
+    timestamp: session.lastOutputTime || null 
+  });
+});
 
 
 /*---------------------------------------API Endpoints---------------------------------------*/
@@ -1036,6 +1148,7 @@ app.post('/api/logs', verifyToken, async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [period, scanner_location, scanner_id, student_id, first_name, last_name, time_scanned, date_scanned, status]);
     await assignPeriodsToLogs();
+    await assignStatusesToLogs();
     res.status(201).json({ message: 'Log entry created successfully' });
   } catch (err) {
     console.error('Error creating log entry:', err);

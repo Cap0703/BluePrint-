@@ -18,18 +18,27 @@
 #include <Adafruit_Fingerprint.h>
 #include <WiFi.h> 
 #include <HTTPClient.h>
-#include time.h
+#include <ArduinoJson.h>
+#include "LittleFS.h"
+#include <time.h>
+
+#define FINGERPRINT_LED_GREEN 0x04
 
 const char* ssid = "BraveWeb";
 const char* password = "Br@veW3b";
-const SCANNER_ID = 1;
-const SCANNER_LOC = 204;
+const char* SCANNER_ID = "1";
+const char* SCANNER_LOCATION = "204";
+const char* SCANNER_PASSWORD = "BluePrint";
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
-const SCANNER_PASSWORD = "BluePrint";
+String authToken = "";
+String pendingCommand = "";
+String lastCommandOutput = "";
+unsigned long lastCommandCheck = 0;
+const unsigned long COMMAND_CHECK_INTERVAL = 5000;
 
-String serverEndpoint = "http://10.20.11.255:3000";
+String serverEndpoint = "blueprint-tm.ddns.net";
 
 
 #if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
@@ -45,7 +54,6 @@ SoftwareSerial mySerial(2, 3);
 #define mySerial Serial1
 
 #endif
-
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
@@ -96,7 +104,7 @@ void setup()
   finger.getTemplateCount();
 
   if (finger.templateCount == 0) {
-    Serial.print("Sensor doesn't contain any fingerprint data. Please run the 'enroll' example.");
+    Serial.print("Sensor doesn't contain any fingerprint data. Please enroll students.");
   }
   else {
     Serial.println("Waiting for valid finger...");
@@ -104,8 +112,19 @@ void setup()
   }
 }
 
+int findStudent(int fingerprintID) {
+    int students[128] = {0};
+    File file = LittleFS.open("/students.bin", FILE_READ);
+    if (file) {
+        file.read((uint8_t*)students, sizeof(students));
+        file.close();
+    }
+    return students[fingerprintID];
+}
+
 void loop()                     // run over and over again
 {
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
   getFingerprintID();
   delay(50);            //don't ned to run this at full speed.
 }
@@ -118,15 +137,19 @@ uint8_t getFingerprintID() {
       break;
     case FINGERPRINT_NOFINGER:
       Serial.println("No finger detected");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_IMAGEFAIL:
       Serial.println("Imaging error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
   }
 
@@ -139,18 +162,23 @@ uint8_t getFingerprintID() {
       break;
     case FINGERPRINT_IMAGEMESS:
       Serial.println("Image too messy");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_PACKETRECIEVEERR:
       Serial.println("Communication error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_FEATUREFAIL:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     case FINGERPRINT_INVALIDIMAGE:
       Serial.println("Could not find fingerprint features");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
     default:
       Serial.println("Unknown error");
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
       return p;
   }
 
@@ -160,19 +188,25 @@ uint8_t getFingerprintID() {
     Serial.println("Found a print match!");
   } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
     Serial.println("Communication error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   } else if (p == FINGERPRINT_NOTFOUND) {
     Serial.println("Did not find a match");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   } else {
     Serial.println("Unknown error");
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     return p;
   }
 
   // found a match!
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
   Serial.print(" with confidence of "); Serial.println(finger.confidence);
-  sendWebRequest(finger.fingerID);
+  sendLog(findStudent(finger.fingerID));
+  delay(3000);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
 
   return finger.fingerID;
 }
@@ -194,7 +228,7 @@ int getFingerprintIDez() {
   return finger.fingerID;
 }
 
-void getDateTime(){
+void getDateTime(String dateStr, String timeStr){
  struct tm timeinfo;
   
   if(!getLocalTime(&timeinfo)){
@@ -214,57 +248,158 @@ void getDateTime(){
   timeStr = String(timeBuffer);
 }
 
-String signIn(){
-  String result;
-  String serverPath = serverEndpoint + "/api/scanner/auth/login";
-  WiFiClient client;
+bool signIn(){
   HTTPClient http;
-  http.begin(client, serverPath);
+  http.begin(serverEndpoint + "/api/scanner/auth/login");
   http.addHeader("Content-Type", "application/json");
-  String httpRequestData = "{";
-  httpRequestData += "\"SCANNER_ID\":" + String(SCANNER_ID) + ",";
-  httpRequestData += "\"SCANNER_LOCATION\":" + String(SCANNER_LOC) + ",";
-  httpRequestData += "\"SCANNER_PASSWORD\":" + String(SCANNER_PASSWORD) + "\"";
-  httpRequestData += "}";
-  int httpResponseCode = http.POST(httpRequestData);
-  if (httpResponseCode > 0) {
-    String payload = http.getString();
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, payload);
-    if (!error) {
-      result = doc["token"].as<String>();
+  StaticJsonDocument<256> doc;
+  doc["SCANNER_ID"] = SCANNER_ID;
+  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+  String requestBody;
+  serializeJson(doc, requestBody);
+  int httpResponseCode = http.POST(requestBody);
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    StaticJsonDocument<512> responseDoc;
+    authToken = responseDoc["token"].as<String>();
+    Serial.println("Successfully signed in to the website!");
+    http.end();
+    return true;
+  } else {
+    Serial.print("Failed to sign in. HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    return false;
+  }
+}
+
+void sendLog(int studentID) {
+  if(authToken == "") {
+    Serial.println("Not authenticated with the website. Cannot send log.");
+    return;
+  }
+  HTTPClient http;
+  String dateScanned;
+  String timeScanned;
+  getDateTime(dateScanned, timeScanned);
+  String serverPath = serverEndpoint + "/api/logs";
+  http.begin(String(serverEndpoint) + "/api/logs");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + authToken);
+  StaticJsonDocument<512> doc;
+  doc["period"] = "";
+  doc["scanner_location"] = SCANNER_LOCATION;
+  doc["scanner_id"] = SCANNER_ID;
+  doc["student_id"] = studentID;
+  doc["first_name"] = "";
+  doc["last_name"] = "";
+  doc["time_scanned"] = timeScanned;
+  doc["date_scanned"] = dateScanned;
+  doc["status"] = "present";
+  String requestBody;
+  serializeJson(doc, requestBody);
+  int httpResponseCode = http.POST(requestBody);
+  if (httpResponseCode == 201) {
+    Serial.println("Log sent successfully!");
+  }
+  else {
+    Serial.print("Failed to send log: ");
+    Serial.println(httpResponseCode);
+  }
+}
+
+void checkForCommands() {
+  if (millis() - lastCommandCheck < COMMAND_CHECK_INTERVAL) {
+    return;
+  }
+  lastCommandCheck = millis();
+  if (authToken == "") {
+    return;
+  }
+  HTTPClient http;
+  String commandEndpoint = serverEndpoint + "/api/scanners/" + SCANNER_ID + "/terminal";
+  http.begin(commandEndpoint);
+  http.addHeader("Authorization", "Bearer " + authToken);
+  int httpResponseCode = http.GET();
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    StaticJsonDocument<256> responseDoc;
+    DeserializationError error = deserializeJson(responseDoc, response);
+    if (!error && responseDoc.containsKey("command")) {
+      const char* cmdPtr = responseDoc["command"];
+      if (cmdPtr != nullptr) {
+        pendingCommand = String(cmdPtr);
+        if (pendingCommand.length() > 0) {
+          Serial.println("Received command: " + pendingCommand);
+          executeCommand(pendingCommand);
+        }
+      }
     }
   }
   http.end();
-  return result;
 }
 
-void sendWebRequest(int studentID) {
-  if(WiFi.status() == WL_CONNECTED){
-    String dateScanned;
-    String timeScanned;
-    getDateTime(dateScanned, timeScanned);
-    WiFiClient client;
-    HTTPClient http;
-    String serverPath = serverEndpoint + "/api/logs";
-    http.begin(client, serverPath);
-    http.addHeader("Content-Type", "application/json");
-    String httpRequestData = "{";
-    httpRequestData += "\"period\":\"na\",";
-    httpRequestData += "\"scanner_location\":" + String(SCANNER_LOC) + ",";
-    httpRequestData += "\"scanner_id\":" + String(SCANNER_ID) + ",";
-    httpRequestData += "\"student_id\":\"" + String(studentID) + "\",";
-    httpRequestData += "\"first_name\":\"na\",";
-    httpRequestData += "\"last_name\":\"na\",";
-    httpRequestData += "\"time_scanned\":\"" + timeScanned + "\",";
-    httpRequestData += "\"date_scanned\":\"" + dateScanned + "\"";
-    httpRequestData += "}";
-    int httpResponseCode = http.POST(httpRequestData);
-    Serial.print("HTTP Response code: ");
+void sendCommandOutput(String output) {
+  if (authToken == "") {
+    Serial.println("Not authenticated. Cannot send command output.");
+    return;
+  }
+  HTTPClient http;
+  String outputEndpoint = serverEndpoint + "/api/scanners/" + SCANNER_ID + "/terminal/output";
+  http.begin(outputEndpoint);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + authToken);
+  StaticJsonDocument<512> doc;
+  doc["output"] = output;
+  doc["timestamp"] = String(millis());
+  String requestBody;
+  serializeJson(doc, requestBody);
+  int httpResponseCode = http.POST(requestBody);
+  if (httpResponseCode == 200) {
+    Serial.println("Command output sent successfully");
+  } else {
+    Serial.print("Failed to send command output: ");
     Serial.println(httpResponseCode);
-    http.end();
   }
-  else {
-    serial.println("Stupid ahh Brady");
+  http.end();
+}
+
+void executeCommand(String command) {
+  command = command.toLowerCase();
+  lastCommandOutput = "";
+  if (command == "status") {
+    lastCommandOutput = "Scanner Status: Active. Fingerprints enrolled: ";
+    lastCommandOutput += String(finger.templateCount);
+  } else if (command == "restart") {
+    lastCommandOutput = "Restarting scanner...";
+    delay(1000);
+    ESP.restart();
+  } else if (command == "wifi_info") {
+    lastCommandOutput = "WiFi SSID: ";
+    lastCommandOutput += String(ssid);
+    lastCommandOutput += " | IP: ";
+    lastCommandOutput += WiFi.localIP().toString();
+  } else if (command == "sync_time") {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+      char buffer[30];
+      strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+      lastCommandOutput = "Current time: ";
+      lastCommandOutput += String(buffer);
+    } else {
+      lastCommandOutput = "Failed to get time";
+    }
+  } else if (command == "clear_fingerprints") {
+    if (finger.deleteModel(0) == FINGERPRINT_OK) {
+      lastCommandOutput = "All fingerprints cleared";
+    } else {
+      lastCommandOutput = "Failed to clear fingerprints";
+    }
+  } else if (command.startsWith("set_location:")) {
+    String newLocation = command.substring(13);
+    lastCommandOutput = "Location set to: " + newLocation;
+  } else {
+    lastCommandOutput = "Unknown command: " + command;
   }
+  sendCommandOutput(lastCommandOutput);
 }
