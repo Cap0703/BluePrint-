@@ -185,7 +185,7 @@ class ContinueButton extends StatelessWidget {
     String password = passwordController.text;
     String uuID = uuid.v4();
 
-    final url = Uri.parse("http://10.20.11.160:3000/api/app/auth/login");
+    final url = Uri.parse("https://blueprint-tm.ddns.net/api/app/auth/login");
   try {
     final response = await http.post(url,
     headers: {
