@@ -83,8 +83,36 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-  
+class HomeScreen extends StatelessWidget {
+  final String token;
+  const HomeScreen({super.key, required this.token});
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.indigo,
+
+      body: SingleChildScrollView(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey.withAlpha(80),
+              border: Border.all(
+                width: 2,
+                color: Colors.deepPurple.shade900,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+          )
+        ),
+      )
+      )
+    );
+  }
+}
 ///FingerprintLogoWidget
 class FingerprintIcon extends StatelessWidget {
   const FingerprintIcon({super.key});
@@ -205,6 +233,10 @@ class ContinueButton extends StatelessWidget {
 
       if (token != null && token.isNotEmpty) {
         print("Token received: $token");
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => HomeScreen(token: token)),
+        );
       } else {
         print("Token missing in response");
       }
