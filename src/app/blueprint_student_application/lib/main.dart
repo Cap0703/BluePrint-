@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
+import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -206,7 +208,7 @@ class ContinueButton extends StatelessWidget {
   final TextEditingController sIDController;
   final TextEditingController passwordController;
   ContinueButton({super.key, required this.formKey, required this.sIDController, required this.passwordController});
-  var uuid = Uuid();
+  final uuid = Uuid();
 
   Future<void> authenticateUser(BuildContext context) async {
     String studentID = sIDController.text;
