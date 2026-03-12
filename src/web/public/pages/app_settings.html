@@ -235,6 +235,9 @@
                     <label>Last Name</label>
                     <input type="text" id="edit_last_name" required>
                 </div>
+                <button type="button" class="btn-primary" id="change_uuid">
+                    <i class="fas fa-key"></i> Reset UUID
+                </button>
                 <div class="form-group">
                     <label>New Password (leave blank to keep current)</label>
                     <input type="password" id="edit_password">
@@ -291,12 +294,43 @@
         const closeEditStudentModal = document.getElementById('closeEditStudentModal');
         const editStudentForm = document.getElementById('editStudentForm');
         const editStudentMessage = document.getElementById('editStudentMessage');
+        const changeUuidBtn = document.getElementById('change_uuid');
         closeEditStudentModal.addEventListener('click', () => {
             editStudentModal.style.display = "none";
         });
         window.addEventListener('click', (e) => {
             if (e.target === editStudentModal) {
                 editStudentModal.style.display = "none";
+            }
+        });
+        changeUuidBtn.addEventListener('click', async () => {
+            if (!currentEditingStudentId) return;
+            if (!confirm("Are you sure you want to reset this student's UUID? This cannot be undone.")) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/app/students/${currentEditingStudentId}/reset_uuid`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    editStudentMessage.textContent = data.error || "Error resetting UUID";
+                    editStudentMessage.style.color = "red";
+                    return;
+                }
+                editStudentMessage.textContent = "UUID reset successfully!";
+                editStudentMessage.style.color = "green";
+                setTimeout(() => {
+                    loadStudents();
+                    editStudentMessage.textContent = "";
+                }, 1000);
+            } catch (err) {
+                console.error(err);
+                editStudentMessage.textContent = "Server error";
+                editStudentMessage.style.color = "red";
             }
         });
         editStudentForm.addEventListener('submit', async (e) => {
