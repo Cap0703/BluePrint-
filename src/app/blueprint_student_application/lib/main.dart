@@ -106,7 +106,15 @@ class HomeScreen extends StatelessWidget {
                 width: 2,
                 color: Colors.deepPurple.shade900,
               ),
+
               borderRadius: BorderRadius.circular(12),
+            ),
+                          child:Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const nfcScannerButton(),
+              ],
             ),
           )
         ),
@@ -278,3 +286,29 @@ class ContinueButton extends StatelessWidget {
   }
 }
 
+class nfcScannerButton extends StatelessWidget {
+  const nfcScannerButton({super.key});
+  
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () {
+          
+        
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.indigo.shade700,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 32,
+          vertical: 12,
+        ),
+        textStyle: const TextStyle(fontSize: 18),
+      ),
+      child: const Text('Open Scanner'),
+    );
+}
+
+
+
+
+}
