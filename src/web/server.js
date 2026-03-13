@@ -607,6 +607,20 @@ app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
   }
 });
 
+app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administrator'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('UPDATE students SET uuid = NULL WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    res.json({ message: 'UUID reset successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to reset UUID' });
+  }
+});
+
 
 /*---------------------------------------- Scanner Authentication ----------------------------------------------*/
 app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
@@ -638,8 +652,6 @@ app.get('/api/scanners', verifyToken, requireRole('administrator'), async (req, 
     res.status(500).json({ error: 'Failed to fetch scanners' });
   }
 });
-
-
 
 app.get('/api/scanners/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
@@ -1177,7 +1189,20 @@ app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
   }
 });
 
-
+app.get('/api/logs/analytics', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT first_name, last_name, scanner_location, student_id, period, COUNT(*) AS total
+      FROM logs
+      GROUP BY first_name, last_name, scanner_location, student_id, period
+      ORDER BY first_name ASC, last_name ASC, period ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching analytics:', err);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
 
 /*----------------------------------------Routes----------------------------------------*/
 app.get('/login', (req, res) => {
