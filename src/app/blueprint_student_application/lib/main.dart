@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
-
+import 'dart:typed_data';
+import 'package:nfc_manager/nfc_manager.dart';
 void main() {
   runApp(const MyApp());
 }
@@ -286,6 +287,40 @@ class ContinueButton extends StatelessWidget {
     );
   }
 }
+Future<void> writeNFCTag(String message) async {
+  NfcManager.instance.startSession(
+    onDiscovered: (NfcTag tag) async {
+      final ndef = Ndef.from(tag);
+      
+      if (ndef == null) {
+        print('Tag does not support NDEF');
+        NfcManager.instance.stopSession(errorMessage: "Not NDEF");
+        return;
+      }
+
+      if (!ndef.isWritable) {
+        print('Tag is read-only');
+        NfcManager.instance.stopSession(errorMessage: "Read only");
+        return;
+      }
+
+      try {
+        final record = NdefRecord.createText(message);
+
+        await ndef.write(
+          NdefMessage([record]),
+        );
+
+        print('Successfully wrote to NFC tag');
+
+        NfcManager.instance.stopSession();
+      } catch (e) {
+        print('Write failed: $e');
+        NfcManager.instance.stopSession(errorMessage: e.toString());
+      }
+    },
+  );
+}
 
 class nfcScannerButtonEnable extends StatelessWidget {
   const nfcScannerButtonEnable({super.key});
@@ -294,7 +329,7 @@ class nfcScannerButtonEnable extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton(
       onPressed: () {
-          
+
         
       },
       style: ElevatedButton.styleFrom(
