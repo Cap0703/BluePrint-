@@ -54,6 +54,37 @@
 .scanner-dot:hover{
     transform:scale(1.2);
 }
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    font-size: 9px;
+}
+
+#currentMapLayer {
+    background-color: #94989c;
+    border-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    font-size: 9px;
+}
     </style>
     <body>
         <div id="navbar"></div>
@@ -63,29 +94,28 @@
                 <div id="map-canvas"></div>
                 <div class="map-builder">
     <h2>Class Map Builder</h2>
-
     <div class="map-toolbar">
         <div class="input-group">
             <label for="roomName">Room Name:</label>
             <input type="text" id="roomName" placeholder="Enter room name">
         </div>
-        <button onclick="createRoom(document.getElementById('roomName').value)" class="btn-primary">
+        <button onclick="createRoom(document.getElementById('roomName').value, parseInt(document.getElementById('currentMapLayer').style.zIndex) || 0)" class="btn-primary">
             <i class="fas fa-door-open"></i> Add Room
         </button>
-
         <button onclick="saveMap()" class="btn-primary">
             <i class="fas fa-save"></i> Save Map
         </button>
     </div>
     <div id="mapCanvas">
-        <button onlick="upLayer()" class="btn-secondary">
-            <i class="fas fa-layer-group"></i> Move Layer Up
+        <button onclick="upLayer()" class="btn-secondary" style="position:relative; top:750px; right:-1050px;">
+            <i class="fas fa-arrow-up"></i>
         </button>
-        <button onlick="downLayer()" class="btn-secondary">
-            <i class="fas fa-layer-group"></i> Move Layer Down
+        <div id="currentMapLayer" style="position:relative; top:750px; right:-1050px;"></div>
+        <button onclick="downLayer()" class="btn-secondary"style="position:relative; top:750px; right:-1050px;">
+            <i class="fas fa-arrow-down"></i>
         </button>
+        </div>
     </div>
-</div>
             </div>
         </div>
     </body>

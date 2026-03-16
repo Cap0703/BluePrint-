@@ -26,12 +26,13 @@ function renderScanner(scanner){
     room.appendChild(dot);
 }
 
-function createRoom(NAME){
+function createRoom(NAME, z){
+    console.log("Creating room with name:", NAME, "and z-index:", z);
     const room = {
         id: "room_" + Date.now(),
         name: NAME,
         students: null,
-        z: 1,
+        z: z,
         x: 100,
         y: 100,
         width: 200,
@@ -153,4 +154,18 @@ async function saveMap(){
         body:JSON.stringify(mapData)
     });
     alert("Map saved");
+}
+
+function upLayer(){
+    const currentLayer = document.getElementById("currentMapLayer");
+    let z = parseInt(currentLayer.style.zIndex) || 0;
+    currentLayer.style.zIndex = z + 1;
+    //console.log("Layer moved up, current z-index:", currentLayer.style.zIndex);
+}
+
+function downLayer(){
+    const currentLayer = document.getElementById("currentMapLayer");
+    let z = parseInt(currentLayer.style.zIndex) || 0;
+    currentLayer.style.zIndex = z - 1;
+    //console.log("Layer moved down, current z-index:", currentLayer.style.zIndex);
 }
