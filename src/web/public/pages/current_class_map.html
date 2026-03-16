@@ -7,13 +7,115 @@
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="/css/style.css">
         <script src="/js/navbar.js"></script>
+        <script src="/js/map.js"></script>
     </head>
+    <style>
+.map-builder{
+    margin-top:40px;
+}
+
+.map-toolbar{
+    margin-bottom:10px;
+}
+
+#mapCanvas{
+    width:1000%;
+    height:900px;
+    background:#f3f3f3;
+    border:2px solid #ccc;
+    position:relative;
+    overflow:hidden;
+}
+
+.room{
+    position:absolute;
+    border:2px solid #1f4ed8;
+    background:rgba(31,78,216,0.1);
+    color: black;
+    border-radius:6px;
+    padding:5px;
+    cursor:move;
+}
+
+.room-header{
+    font-weight:bold;
+    font-size:12px;
+}
+
+.scanner-dot{
+    width:20px;
+    height:20px;
+    background:#e74c3c;
+    border-radius:50%;
+    position:absolute;
+    cursor:grab;
+}
+
+.scanner-dot:hover{
+    transform:scale(1.2);
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    font-size: 9px;
+}
+
+#currentMapLayer {
+    background-color: #94989c;
+    border-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    font-size: 9px;
+}
+    </style>
     <body>
         <div id="navbar"></div>
         <div class="map-container">
             <h1>Current Class Map</h1>
             <div class="map-card">
-
+                <div id="map-canvas"></div>
+                <div class="map-builder">
+    <h2>Class Map Builder</h2>
+    <div class="map-toolbar">
+        <div class="input-group">
+            <label for="roomName">Room Name:</label>
+            <input type="text" id="roomName" placeholder="Enter room name">
+        </div>
+        <button onclick="createRoom(document.getElementById('roomName').value, parseInt(document.getElementById('currentMapLayer').style.zIndex) || 0)" class="btn-primary">
+            <i class="fas fa-door-open"></i> Add Room
+        </button>
+        <button onclick="saveMap()" class="btn-primary">
+            <i class="fas fa-save"></i> Save Map
+        </button>
+    </div>
+    <div id="mapCanvas">
+        <button onclick="upLayer()" class="btn-secondary" style="position:relative; top:750px; right:-1050px;">
+            <i class="fas fa-arrow-up"></i>
+        </button>
+        <div id="currentMapLayer" style="position:relative; top:750px; right:-1050px;"></div>
+        <button onclick="downLayer()" class="btn-secondary"style="position:relative; top:750px; right:-1050px;">
+            <i class="fas fa-arrow-down"></i>
+        </button>
+        </div>
+    </div>
             </div>
         </div>
     </body>
