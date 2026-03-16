@@ -113,7 +113,8 @@ class HomeScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const nfcScannerButton(),
+                const nfcScannerButtonEnable(),
+                const nfcScannerButtonDisable(),
               ],
             ),
           )
@@ -286,8 +287,8 @@ class ContinueButton extends StatelessWidget {
   }
 }
 
-class nfcScannerButton extends StatelessWidget {
-  const nfcScannerButton({super.key});
+class nfcScannerButtonEnable extends StatelessWidget {
+  const nfcScannerButtonEnable({super.key});
   
   @override
   Widget build(BuildContext context) {
@@ -299,12 +300,39 @@ class nfcScannerButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.indigo.shade700,
         padding: const EdgeInsets.symmetric(
-          horizontal: 32,
-          vertical: 12,
+          horizontal: 40,
+          vertical: 20,
         ),
         textStyle: const TextStyle(fontSize: 18),
       ),
       child: const Text('Open Scanner'),
+    );
+}
+
+
+
+
+}
+
+class nfcScannerButtonDisable extends StatelessWidget {
+  const nfcScannerButtonDisable({super.key});
+  
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () {
+          
+        
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color.fromARGB(255, 255, 0, 0),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 40,
+          vertical: 20,
+        ),
+        textStyle: const TextStyle(fontSize: 18),
+      ),
+      child: const Text('Close Scanner'),
     );
 }
 
