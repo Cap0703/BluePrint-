@@ -143,3 +143,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+document.getElementById('assignPeriodsBtn')
+    .addEventListener('click', assignPeriodsToLogs);
+
+document.getElementById('assignStatusesBtn')
+    .addEventListener('click', assignStatusesToLogs);
+
+async function assignPeriodsToLogs() {
+    try {
+        const res = await fetch('/api/logs/assign-periods', {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert(data.error || "Failed to assign periods");
+            return;
+        }
+        alert("Periods assigned successfully!");
+        loadLogs();
+    } catch (err) {
+        console.error(err);
+        alert("Server error");
+    }
+}
+
+async function assignStatusesToLogs() {
+    try {
+        const res = await fetch('/api/logs/assign-statuses', {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert(data.error || "Failed to assign statuses");
+            return;
+        }
+        alert("Statuses assigned successfully!");
+        loadLogs();
+    } catch (err) {
+        console.error(err);
+        alert("Server error");
+    }
+}

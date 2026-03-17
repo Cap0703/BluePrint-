@@ -253,29 +253,33 @@ loadCalendarCache();
 
 /*----------------------------------------Log Functions----------------------------------------*/
 
-function assignStatusForLog(log) {
-  if (log.status === 'Unknown') {
-    if (log.time_scanned <= getPeriodStartTime(log.period)) {
+function timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function assignStatusForLog(log, periods) {
+  if (!log.status || log.status === 'Unknown' || log.status === 'na') {
+    if (!log.period) return 'Unknown';
+    const period = periods.find(p => p.title === log.period);
+    if (!period) return 'Unknown';
+    const logTimeStr = log.time_scanned?.split(" ")[1];
+    if (!logTimeStr) return 'Unknown';
+    const scannedMinutes = timeToMinutes(logTimeStr);
+    const startMinutes = timeToMinutes(period.startTime);
+    if (scannedMinutes === null || startMinutes === null) return 'Unknown';
+    if (scannedMinutes <= startMinutes) {
       return 'On Time';
-    }
-    else if (log.time_scanned > getPeriodStartTime(log.period)) {
+    } else {
       return 'Late';
-    }
-    else {
-      return 'Absent';
     }
   }
   return log.status;
 }
 
-function getPeriodStartTime(periodTitle) {
-  const periods = getPeriodsToday();
-  const period = periods.find(p => p.title === periodTitle);
-  return period ? period.startTime : null;
-}
-
 function assignPeriodForLog(log, periods) {
-  console.log(log.id, 'scanned at', log.time_scanned, 'checking against periods:', periods.map(p => `${p.title} (${p.startTime}-${p.endTime})`));
+  //console.log(log.id, 'scanned at', log.time_scanned, 'checking against periods:', periods.map(p => `${p.title} (${p.startTime}-${p.endTime})`));
   if (!log.time_scanned) {
     console.log('No time_scanned for log:', log.id);
     return null;
@@ -295,7 +299,7 @@ function assignPeriodForLog(log, periods) {
     const endTotalMinutes = endHour * 60 + endMinute;
     const earlyTotalMinutes = startTotalMinutes - earlyBuffer;
     if (logTotalMinutes >= earlyTotalMinutes && logTotalMinutes <= endTotalMinutes) {
-      console.log(`Assigning period "${p.title}" to log ${log.id} (scanned at ${logTime})`);
+      //console.log(`Assigning period "${p.title}" to log ${log.id} (scanned at ${logTime})`);
       return p.title;
     }
   }
@@ -306,7 +310,7 @@ function assignPeriodForLog(log, periods) {
 async function assignStatusesToLogs() {
   try {
     const result = await pool.query("SELECT * FROM logs WHERE status IS NULL OR status = '' OR status = 'na' OR status = 'Unknown'");
-    console.log(`Found ${result.rows.length} logs without assigned statuses`);
+    //console.log(`Found ${result.rows.length} logs without assigned statuses`);
     const logsByDate = {};
     result.rows.forEach(log => {
       const date = log.date_scanned;
@@ -335,7 +339,7 @@ async function assignStatusesToLogs() {
 async function assignPeriodsToLogs() {
   try {
     const result = await pool.query("SELECT * FROM logs WHERE period IS NULL OR period = '' OR period = 'na'");
-    console.log(`Found ${result.rows.length} logs without assigned periods`);
+    //console.log(`Found ${result.rows.length} logs without assigned periods`);
     const logsByDate = {};
     result.rows.forEach(log => {
       const date = log.date_scanned;
@@ -946,7 +950,6 @@ app.post('/api/users', verifyToken, requireRole('administrator'), async (req, re
 
 app.get('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
-    // include courses array in the result so front‑end can show assignments and populate edit forms
     const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at, courses FROM users ORDER BY email ASC');
     res.json(result.rows);
   } catch (err) {
@@ -1036,6 +1039,38 @@ app.delete('/api/users/:id', verifyToken, requireRole('administrator'), async (r
   }
 });
 
+
+
+/*---------------------------- Current Class Map Endpoints ----------------------------*/
+app.post('/api/map-layout', verifyToken, async (req, res) => {
+  try {
+    const mapData = req.body;
+    await pool.query(`
+      INSERT INTO map_layouts (id, data)
+      VALUES (1, $1)
+      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, created_at = CURRENT_TIMESTAMP
+    `, [JSON.stringify(mapData)]);
+    res.json({ message: 'Map saved successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save map' });
+  }
+});
+ 
+app.get('/api/map-layout', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT data FROM map_layouts WHERE id = 1
+    `);
+    if (result.rows.length === 0) {
+      return res.json({ rooms: [], scanners: [] });
+    }
+    res.json(result.rows[0].data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to load map' });
+  }
+});
 
 
 /*-------Courses Endpoints-------*/
@@ -1141,7 +1176,7 @@ app.post('/api/logs', verifyToken, async (req, res) => {
       const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
       if (computed) {
         period = computed;
-        console.log(`Computed period for new log: ${period}`);
+        //console.log(`Computed period for new log: ${period}`);
       } else {
         console.log('Could not compute period for new log, will fill later');
       }
