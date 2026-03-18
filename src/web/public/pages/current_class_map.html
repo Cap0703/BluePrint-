@@ -85,37 +85,95 @@
     width: 15px;
     font-size: 9px;
 }
+
+#mapMenuToggle{
+    position:absolute;
+    top:10px;
+    left:10px;
+    width:40px;
+    height:40px;
+    background:#1f4ed8;
+    color:white;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:6px;
+    cursor:pointer;
+    z-index:999;
+}
+
+#mapMenu{
+    position:absolute;
+    top:60px;
+    left:10px;
+    width:200px;
+    background:white;
+    border:2px solid #ccc;
+    padding:10px;
+    border-radius:6px;
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    z-index:999;
+}
+
+#mapMenu input{
+    width:100%;
+    padding:5px;
+}
+
+#mapMenu button{
+    padding:6px;
+    cursor:pointer;
+}
+
+#rightControls{
+    position: absolute;
+    right: 10px;
+    bottom: 20px;
+    
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+
+    z-index: 1000;
+}
     </style>
     <body>
         <div id="navbar"></div>
         <div class="map-container">
             <h1>Current Class Map</h1>
             <div class="map-card">
-                <div id="map-canvas"></div>
-                <div class="map-builder">
-    <h2>Class Map Builder</h2>
-    <div class="map-toolbar">
-        <div class="input-group">
-            <label for="roomName">Room Name:</label>
-            <input type="text" id="roomName" placeholder="Enter room name">
-        </div>
-        <button onclick="createRoom(document.getElementById('roomName').value, parseInt(document.getElementById('currentMapLayer').style.zIndex) || 0)" class="btn-primary">
-            <i class="fas fa-door-open"></i> Add Room
-        </button>
-        <button onclick="saveMap()" class="btn-primary">
-            <i class="fas fa-save"></i> Save Map
-        </button>
-    </div>
-    <div id="mapCanvas">
-        <button onclick="upLayer()" class="btn-secondary" style="position:relative; top:750px; right:-1050px;">
-            <i class="fas fa-arrow-up"></i>
-        </button>
-        <div id="currentMapLayer" style="position:relative; top:750px; right:-1050px;"></div>
-        <button onclick="downLayer()" class="btn-secondary"style="position:relative; top:750px; right:-1050px;">
-            <i class="fas fa-arrow-down"></i>
-        </button>
-        </div>
-    </div>
+                    <div id="mapCanvas">
+                        <div id="mapMenuToggle">
+                            <i class="fas fa-bars"></i>
+                        </div>
+                        <div id="mapMenu">
+                            <h3>Map Tools</h3>
+                            <input type="text" id="roomName" placeholder="Room name">
+                            <button onclick="createRoom(
+                                document.getElementById('roomName').value,
+                                parseInt(document.getElementById('currentMapLayer').dataset.z) || 0
+                            )">
+                                Add Room
+                            </button>
+                            <button onclick="saveMap()">Save Map</button>
+                            <button onclick="toggleDeleteMode()" id="deleteModeBtn">
+                                Delete Mode
+                            </button>
+                        </div>
+                        <div id="rightControls">
+                            <button onclick="upLayer()" class="btn-secondary">
+                                <i class="fas fa-arrow-up"></i>
+                            </button>
+                            <div id="currentMapLayer"></div>
+                            <button onclick="downLayer()" class="btn-secondary">
+                                <i class="fas fa-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </body>

@@ -540,8 +540,6 @@
             if (!terminalScannerId) return;
             try {
                 const token = localStorage.getItem('auth_token');
-                
-                // Send command to queue
                 const resp = await fetch(`/api/scanners/${terminalScannerId}/terminal`, {
                     method: 'POST',
                     headers: {
@@ -557,11 +555,10 @@
                     return;
                 }
                 
-                appendOutput('⏳ Waiting for scanner response...');
+                showWaitingSpinner();
                 
-                // Poll for output from scanner
                 let attempts = 0;
-                const maxAttempts = 30; // 30 seconds timeout (1 second per attempt)
+                const maxAttempts = 30;
                 const pollInterval = setInterval(async () => {
                     attempts++;
                     try {
@@ -570,27 +567,25 @@
                             headers: { 'Authorization': `Bearer ${token}` }
                         });
                         const outputData = await outputResp.json();
-                        
                         if (outputData.output && outputData.output.trim() !== '') {
                             clearInterval(pollInterval);
-                            // Remove the waiting message
-                            const lines = terminalOutput.querySelectorAll('div');
-                            if (lines.length > 0) {
-                                const lastLine = lines[lines.length - 1];
-                                if (lastLine.textContent.includes('Waiting for scanner')) {
-                                    lastLine.remove();
-                                }
+                            if (waitingLine) {
+                                waitingLine.remove();
+                                waitingLine = null;
                             }
                             appendOutput(outputData.output);
                         } else if (attempts >= maxAttempts) {
                             clearInterval(pollInterval);
+                            if (waitingLine) {
+                                waitingLine.remove();
+                                waitingLine = null;
+                            }
                             appendOutput('⚠️ Command timeout - no response from scanner');
                         }
                     } catch (err) {
                         console.error('Poll error:', err);
                     }
                 }, 1000);
-                
             } catch (err) {
                 console.error('Terminal send error', err);
                 appendOutput('Server error');
@@ -608,6 +603,14 @@
                 terminalInput.focus();
             }
         });
+        let waitingLine;
+
+        function showWaitingSpinner() {
+            const div = document.createElement('div');
+            div.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for scanner response...';
+            terminalOutput.appendChild(div);
+            waitingLine = div;
+        }
     </script>
 </body>
 </html>

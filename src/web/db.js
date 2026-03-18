@@ -18,6 +18,7 @@ export async function initializeDatabase() {
     await initNotifications();
     await initLogs();
     await initScanners();
+    await initMap();
 }
 
 async function initAppUsers() {
@@ -139,6 +140,25 @@ async function initScanners() {
     finally {
         client.release();
     }
+}
+
+async function initMap() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS map_layouts (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        data JSONB NOT NULL DEFAULT '{"rooms":[],"scanners":[]}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT single_row CHECK (id = 1)
+      );
+    `);
+    console.log('Map layouts table initialized (global).');
+  } catch (err) {
+    console.error('Error initializing map table:', err);
+  } finally {
+    client.release();
+  }
 }
 
 async function initCourses() {
