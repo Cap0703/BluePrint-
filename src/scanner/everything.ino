@@ -56,6 +56,17 @@ int getNextFreeSlot() {
   return -1;
 }
 
+void saveStudents() {
+  File file = LittleFS.open(STUDENTS_BIN, FILE_WRITE);
+  if (!file) {
+    Serial.println("ERROR: Could not open student map for writing!");
+    return;
+  }
+  file.write((uint8_t*)students, sizeof(students));
+  file.close();
+  Serial.println("Student map saved.");
+}
+
 void handleStorageFull() {
   Serial.println("\nNo free fingerprint slots!");
   Serial.println("Delete ALL stored fingerprints? (y/n)");
