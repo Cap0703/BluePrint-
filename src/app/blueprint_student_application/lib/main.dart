@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
-import 'dart:typed_data';
 import 'package:nfc_manager/nfc_manager.dart';
 void main() {
   runApp(const MyApp());
@@ -125,16 +124,16 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-///FingerprintLogoWidget
-class FingerprintIcon extends StatelessWidget {
+///FingerprintLogoWidget *REMEMBER TO CHANGE THIS TO THE REAL LOGO LAYER
+class FingerprintIcon extends StatelessWidget { 
   const FingerprintIcon({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Icon(
-      Icons.fingerprint,
-      size: 100,
-      color: Colors.indigo,
+    return Image.asset(
+      "assets/BluePrint_Logo.png",
+      width: 100,
+      height: 100,
     );
   }
 }
@@ -176,7 +175,7 @@ class StudentIDField extends StatelessWidget {
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'Please enter some text';
-        } // Added missing closing brace for the 'if' statement
+        } 
         return null;
       }, 
     ); 
@@ -205,7 +204,7 @@ class PasswordField extends StatelessWidget {
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'Please enter some text';
-        } // Added missing closing brace for the 'if' statement
+        } 
         return null;
       }, 
     ); 
@@ -287,11 +286,17 @@ class ContinueButton extends StatelessWidget {
     );
   }
 }
+class getNFCMessage {
+  final String nfcMessage = '';
+    // add functionality to grab message to send to NFC tag from backend using JWT
+    
+}
+
 Future<void> writeNFCTag(String message) async {
   NfcManager.instance.startSession(
     onDiscovered: (NfcTag tag) async {
       final ndef = Ndef.from(tag);
-      
+
       if (ndef == null) {
         print('Tag does not support NDEF');
         NfcManager.instance.stopSession(errorMessage: "Not NDEF");
@@ -329,7 +334,7 @@ class nfcScannerButtonEnable extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton(
       onPressed: () {
-
+          
         
       },
       style: ElevatedButton.styleFrom(
