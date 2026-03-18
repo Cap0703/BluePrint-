@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Room - BluePrint™</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="/css/style.css">
+        <script src="/js/navbar.js"></script>
+        <style>
+        </style>
+    </head>
+    <body>
+        <div id="navbar"></div>
+        <div class="room-container">
+            <h1 id="room-info"></h1>
+            <div class="scanner-container"></div>
+            <div class="log-container"></div>
+        </div>
+    </body>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const params = new URLSearchParams(window.location.search);
+            const name = params.get("room_name");
+
+            document.getElementById("room-info").textContent =
+                `Room Number: ${name}`;
+
+            loadLogs(name);
+        });
+
+        async function loadLogs(name) {
+            const token = localStorage.getItem('auth_token');
+            try {
+                const res = await fetch(`/api/logs/${name}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!res.ok) {
+                    console.error('Failed to fetch logs');
+                    return;
+                }
+                const logs = await res.json();
+                const logContainer = document.querySelector('.log-container');
+                logContainer.innerHTML = '<h2>Logs:</h2>';
+                if (logs.length === 0) {
+                    logContainer.innerHTML += '<p>No logs found for this room.</p>';
+                } else {
+                    logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+                        logEntry.classList.add('log-entry');
+                        logEntry.textContent = `Scanned on ${log.date_scanned} at ${log.time_scanned}: Marked ${log.status} for ${log.student_id} --> ${log.first_name} ${log.last_name}`;
+                        logContainer.appendChild(logEntry);
+                    });
+                }
+            } catch (err) {
+                console.error('Error fetching logs:', err);
+            }
+        }
+    </script>
+</html>

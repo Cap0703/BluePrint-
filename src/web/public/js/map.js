@@ -5,21 +5,13 @@ const mapData = {
     scanners: []
 };
 
-/*---------------------------------------- Init ----------------------------------------*/
-
 document.addEventListener('DOMContentLoaded', async () => {
-
-    // Wire up the hamburger menu toggle
     const toggle = document.getElementById("mapMenuToggle");
     const menu   = document.getElementById("mapMenu");
     toggle.addEventListener("click", () => {
         menu.style.display = menu.style.display === "flex" ? "none" : "flex";
     });
-
-    // Set the layer display to 0
     reloadLevel();
-
-    // Load the global map from the server
     await loadMap();
 });
 
@@ -118,7 +110,6 @@ function renderRoom(room){
             ${room.students}
         </div>
     `;
-
     let moved = false;
     div.addEventListener("mousedown", () => { moved = false; });
     div.addEventListener("mousemove", () => { moved = true;  });
@@ -129,10 +120,9 @@ function renderRoom(room){
             return;
         }
         if(!moved){
-            alert("Touch Me Again 🙈");
+            window.location.href = `/room?room_name=${room.name}`;
         }
     });
-
     enableRoomDrag(div, room);
     map.appendChild(div);
     updateLayerVisibility();
@@ -220,10 +210,10 @@ async function saveMap(){
             body: JSON.stringify(mapData)
         });
         if(!res.ok) throw new Error(await res.text());
-        alert("Map saved ✅");
+        alert("Map saved");
     } catch(err) {
         console.error("Save failed:", err);
-        alert("Failed to save map ❌");
+        alert("Failed to save map");
     }
 }
 
@@ -235,13 +225,10 @@ async function loadMap(){
         });
         if(!res.ok) throw new Error(await res.text());
         const data = await res.json();
-
         mapData.rooms    = data.rooms    || [];
         mapData.scanners = data.scanners || [];
-
         mapData.rooms.forEach(room => renderRoom(room));
         renderScanners();
-
     } catch(err) {
         console.error("Failed to load map:", err);
     }

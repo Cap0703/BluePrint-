@@ -1239,6 +1239,53 @@ app.get('/api/logs/analytics', verifyToken, async (req, res) => {
   }
 });
 
+app.get('/api/logs/:room', verifyToken, async (req, res) => {
+  const { room } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      WHERE scanner_location = $1
+    `, [room]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching logs for room and period:', err);
+    res.status(500).json({ error: 'Failed to fetch logs for room and period' });
+  }
+});
+
+app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
+  const { room, period } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      WHERE scanner_location = $1 AND period = $2
+    `, [room, period]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching logs for room and period:', err);
+    res.status(500).json({ error: 'Failed to fetch logs for room and period' });
+  }
+});
+
+app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
+  const { room, period, date } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      WHERE scanner_location = $1 AND period = $2 AND date_scanned = $3
+    `, [room, period, date]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching logs for room and period:', err);
+    res.status(500).json({ error: 'Failed to fetch logs for room and period' });
+  }
+});
+
+
+
 /*----------------------------------------Routes----------------------------------------*/
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -1246,6 +1293,10 @@ app.get('/login', (req, res) => {
 
 app.get('/', redirectIfNotAuthenticated, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/room', redirectIfNotAuthenticated, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pages', 'room.html'));
 });
 
 app.get('/profile', redirectIfNotAuthenticated, (req, res) => {
