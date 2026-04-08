@@ -87,7 +87,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
 class HomeScreen extends StatelessWidget {
   final String token;
-  const HomeScreen({super.key, required this.token});
+  final String studentID;
+  const HomeScreen({super.key, required this.token, required this.studentID});
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +114,8 @@ class HomeScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const nfcScannerButtonEnable(),
-                const nfcScannerButtonDisable(),
+                nfcScannerButtonEnable(studentID: studentID, token: token),
+                nfcScannerButtonDisable(),
               ],
             ),
           )
@@ -219,7 +220,7 @@ class ContinueButton extends StatelessWidget {
   ContinueButton({super.key, required this.formKey, required this.sIDController, required this.passwordController});
   final uuid = Uuid();
 
-  Future<void> authenticateUser(BuildContext context) async {
+  Future<String> authenticateUser(BuildContext context) async {
     String studentID = sIDController.text;
     String password = passwordController.text;
     String uuID = uuid.v4();
@@ -246,17 +247,26 @@ class ContinueButton extends StatelessWidget {
         print("Token received: $token");
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => HomeScreen(token: token)),
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(
+              token: token,
+              studentID: studentID,
+            ),
+          ),
         );
+        return token;
       } else {
         print("Token missing in response");
+        return "";
       }
     } else {
         print("Login failed: ${response.statusCode}");
+        return "";
     }
   }
     catch(e) {
       print("Error $e");
+      return "";
     }
   }
   @override
@@ -286,8 +296,36 @@ class ContinueButton extends StatelessWidget {
     );
   }
 }
-class getNFCMessage {
-  final String nfcMessage = '';
+Future<String> getNFCMessage (String studentID, String token) {
+  final url = Uri.parse("https://blueprint-tm.ddns.net/api/app/encrypt_student_id");
+  final response = http.post(url,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer $token"
+    },
+    body: jsonEncode({
+      "student_id": studentID
+    }),
+    );
+    return response.then((res) {
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        String? encryptedID = data["encrypted_id"];
+        if (encryptedID != null && encryptedID.isNotEmpty) {
+          print("Encrypted ID received: $encryptedID");
+          return encryptedID;
+        } else {
+          print("Encrypted ID missing in response");
+          return '';
+        }
+      } else {
+        print("Failed to get NFC message: ${res.statusCode}");
+        return '';
+      }
+    }).catchError((e) {
+      print("Error fetching NFC message: $e");
+      return '';
+    });
     // add functionality to grab message to send to NFC tag from backend using JWT
     
 }
@@ -328,13 +366,17 @@ Future<void> writeNFCTag(String message) async {
 }
 
 class nfcScannerButtonEnable extends StatelessWidget {
-  const nfcScannerButtonEnable({super.key});
+  const nfcScannerButtonEnable({super.key, required this.studentID, required this.token});
   
+  final String studentID;
+  final String token;
+
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
       onPressed: () {
-          
+          String message = getNFCMessage(studentID, token) as String;
+          writeNFCTag(message);
         
       },
       style: ElevatedButton.styleFrom(
