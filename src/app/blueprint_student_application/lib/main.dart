@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
-import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 void main() {
   runApp(const MyApp());
