@@ -1,4 +1,4 @@
-<img width="1536" height="1024" alt="Logo Design Request Apr 13 2026 (1)" src="https://github.com/user-attachments/assets/a32c1bed-2c70-4431-9329-158eabc421db" />
+![AI Upscaled Image](https://github.com/user-attachments/assets/bc2840bf-cd15-4489-adc4-7fc816b2bd65)
 
 
 🔁 The next generation of Student Accountability systems. Tracking utilizing cutting-edge technology, NFC and Fingerprint Scanning.
