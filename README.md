@@ -1,4 +1,4 @@
-![AI Upscaled Image](https://github.com/user-attachments/assets/bc2840bf-cd15-4489-adc4-7fc816b2bd65)
+<p align="center"> <img width="490" height="525" align="center" alt="Untitled-2" src="https://github.com/user-attachments/assets/e7838a61-14f2-4990-b2f1-762f8ea225a7" /> </p>
 
 
 🔁 The next generation of Student Accountability systems. Tracking utilizing cutting-edge technology, NFC and Fingerprint Scanning.
