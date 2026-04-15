@@ -11,6 +11,7 @@ import session from 'express-session';
 import cors from 'cors';
 import crypto from 'crypto';
 import { get } from 'http';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +34,19 @@ app.use(session({
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
 
 const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => {
+    return req.body.email + '_' + req.ip;
+  },
+  message: {
+    error: 'Too many login attempts. Please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -841,7 +855,7 @@ app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administr
 /*---------------------------------------API Endpoints---------------------------------------*/
 
 /*-------Authentication Endpoints-------*/
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
