@@ -229,6 +229,8 @@ async function postLogMaintenance(url, successMessage) {
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').toLowerCase();
   if (value === 'on-time') return 'On Time';
+  if (value === 'ontime') return 'On Time';
+  if (value === 'on time') return 'On Time';
   if (value === 'late') return 'Late';
   if (value === 'absent') return 'Absent';
   if (value === 'excused') return 'Excused';
