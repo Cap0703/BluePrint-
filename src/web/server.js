@@ -864,9 +864,35 @@ const scannerTerminalSessions = {};
 
 function getScannerSession(scannerId) {
   if (!scannerTerminalSessions[scannerId]) {
-    scannerTerminalSessions[scannerId] = { mode: 'scanner' };
+    scannerTerminalSessions[scannerId] = {
+      mode: 'scanner',
+      pendingCommand: null,
+      pendingCommandId: 0,
+      lastOutput: '',
+      lastOutputTime: null,
+      outputVersion: 0,
+      outputHistory: [],
+      scannerLastSeenAt: null
+    };
   }
   return scannerTerminalSessions[scannerId];
+}
+
+function normalizeScannerMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (value === 'enroll' || value === 'enrollment') return 'enroll';
+  return 'scanner';
+}
+
+function modeFromTerminalCommand(command, currentMode) {
+  const value = String(command || '').trim().toLowerCase();
+  if (value === 'enroll' || value === 'mode enroll' || value === 'enter enroll') {
+    return 'enroll';
+  }
+  if (value === 'scanner' || value === 'scan' || value === 'mode scanner' || value === 'exit' || value === 'cancel') {
+    return 'scanner';
+  }
+  return currentMode;
 }
 
 app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator'), async (req, res) => {
@@ -877,47 +903,78 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   }
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
+  session.mode = modeFromTerminalCommand(cmd, session.mode);
   session.pendingCommand = cmd;
+  session.pendingCommandId += 1;
   session.commandSentTime = new Date();
   res.json({ 
     message: 'Command queued for scanner',
-    pending: true
+    pending: true,
+    mode: session.mode,
+    commandId: session.pendingCommandId
   });
 });
 
 app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
+  session.scannerLastSeenAt = new Date();
   if (session.pendingCommand) {
     const cmd = session.pendingCommand;
+    const commandId = session.pendingCommandId;
     session.pendingCommand = null;
     res.json({ 
       command: cmd,
-      mode: session.mode 
+      mode: session.mode,
+      commandId
     });
   } else {
     res.json({ 
       command: null,
-      mode: session.mode 
+      mode: session.mode,
+      commandId: session.pendingCommandId
     });
   }
 });
 
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
-  const { output } = req.body;
+  const { output, mode, commandId } = req.body;
   const session = getScannerSession(scannerId);
-  session.lastOutput = output;
-  session.lastOutputTime = new Date();
-  res.json({ message: 'Output received' });
+  const now = new Date();
+  session.scannerLastSeenAt = now;
+  session.mode = normalizeScannerMode(mode || session.mode);
+
+  if (typeof output === 'string' && output.trim() !== '') {
+    session.lastOutput = output;
+    session.lastOutputTime = now;
+    session.outputVersion += 1;
+    session.outputHistory.push({
+      version: session.outputVersion,
+      output,
+      timestamp: now,
+      commandId: commandId ?? null
+    });
+    if (session.outputHistory.length > 50) {
+      session.outputHistory = session.outputHistory.slice(-50);
+    }
+  }
+
+  res.json({ message: 'Output received', mode: session.mode });
 });
 
 app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administrator'), (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
+  const afterVersion = Number(req.query.afterVersion || 0);
+  const entries = session.outputHistory.filter(entry => entry.version > afterVersion);
   res.json({ 
     output: session.lastOutput || '', 
-    timestamp: session.lastOutputTime || null 
+    timestamp: session.lastOutputTime || null,
+    mode: session.mode,
+    outputVersion: session.outputVersion,
+    scannerLastSeenAt: session.scannerLastSeenAt || null,
+    entries
   });
 });
 

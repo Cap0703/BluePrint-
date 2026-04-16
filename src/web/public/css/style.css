@@ -1485,3 +1485,313 @@ tr:hover {
         justify-content: flex-start;
     }
 }
+
+.management-shell {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.management-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+}
+
+.management-card {
+    padding: 1.5rem;
+}
+
+.management-card h2,
+.management-card h3 {
+    text-align: left;
+    margin: 0;
+    padding: 0;
+    color: #ffffff;
+}
+
+.management-copy {
+    color: rgba(233, 243, 255, 0.72);
+    line-height: 1.55;
+    margin-top: 0.4rem;
+}
+
+.management-form {
+    display: grid;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    max-width: none;
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.management-form .form-group {
+    margin: 0;
+}
+
+.management-form .form-group label {
+    color: #dfeeff;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+}
+
+.management-form .form-group input,
+.management-form .form-group select {
+    margin: 0;
+}
+
+.management-form .button-row,
+.management-toolbar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.management-message {
+    margin: 0;
+    min-height: 1.2rem;
+    color: rgba(235, 244, 255, 0.82);
+}
+
+.management-table-shell {
+    overflow: auto;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.management-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(220, 233, 245, 0.96);
+}
+
+.management-table th,
+.management-table td {
+    color: #203041;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid rgba(32, 48, 65, 0.08);
+    vertical-align: top;
+}
+
+.management-table th {
+    background: rgba(24, 69, 112, 0.92);
+    color: #ffffff;
+    text-align: left;
+}
+
+.management-table tbody tr:hover {
+    background: rgba(249, 252, 255, 0.96);
+}
+
+.management-action-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.soft-button,
+.accent-button,
+.danger-button {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0.65rem 0.95rem;
+    border-radius: 10px;
+    text-decoration: none;
+}
+
+.soft-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.soft-button:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.accent-button {
+    background: linear-gradient(135deg, #268bff, #185cc4);
+    color: #ffffff;
+}
+
+.danger-button {
+    background: linear-gradient(135deg, #d84860, #b52e46);
+    color: #ffffff;
+}
+
+.management-checklist {
+    max-height: 180px;
+    overflow: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.07);
+    padding: 0.85rem;
+    display: grid;
+    gap: 0.65rem;
+}
+
+.management-checklist-item {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    color: #edf5ff;
+}
+
+.management-checklist-item input {
+    width: auto;
+    margin-top: 0.25rem;
+}
+
+.terminal-modal .modal-content {
+    width: min(960px, 94vw);
+    background: linear-gradient(180deg, rgba(9, 24, 37, 0.98), rgba(5, 18, 30, 0.98));
+    color: #f4fbff;
+    border: 1px solid rgba(143, 219, 255, 0.16);
+}
+
+.terminal-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.terminal-toolbar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.terminal-status {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.mode-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #edf8ff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mode-chip.enroll {
+    background: rgba(255, 209, 102, 0.16);
+    color: #ffe7a8;
+}
+
+.mode-chip.scanner {
+    background: rgba(104, 211, 145, 0.16);
+    color: #b8ffd0;
+}
+
+.terminal-stream {
+    min-height: 420px;
+    max-height: 56vh;
+    overflow: auto;
+    padding: 1rem;
+    border-radius: 16px;
+    background: radial-gradient(circle at top, rgba(25, 79, 121, 0.42), rgba(4, 18, 31, 0.98));
+    border: 1px solid rgba(143, 219, 255, 0.12);
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.terminal-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.45;
+}
+
+.terminal-line.command {
+    color: #8fdcff;
+}
+
+.terminal-line.output {
+    color: #f2f8ff;
+}
+
+.terminal-line.system {
+    color: #c8d8ea;
+    font-style: italic;
+}
+
+.terminal-line.error {
+    color: #ff9ca8;
+}
+
+.terminal-controls {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.terminal-mode-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.terminal-input-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.terminal-input-row input {
+    margin: 0;
+}
+
+.terminal-hint {
+    color: rgba(216, 230, 244, 0.72);
+    font-size: 0.92rem;
+}
+
+.surface-modal .modal-content {
+    background: rgba(228, 238, 248, 0.98);
+    color: #203041;
+}
+
+.surface-modal .close-btn {
+    float: none;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+}
+
+@media (max-width: 1100px) {
+    .management-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .management-form .button-row,
+    .management-toolbar,
+    .terminal-toolbar,
+    .terminal-mode-actions,
+    .management-action-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .terminal-input-row {
+        grid-template-columns: 1fr;
+    }
+
+    .soft-button,
+    .accent-button,
+    .danger-button {
+        width: 100%;
+    }
+}
