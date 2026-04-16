@@ -33,6 +33,7 @@ function updateNavbarWithUser() {
   const navbar = document.querySelector('.navbar');
   if (!navbar) return;
   const userSection = document.createElement('div');
+  userSection.className = 'navbar-user-section';
   userSection.style.cssText = `
     padding: 15px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);

@@ -134,6 +134,100 @@
         .navbar-menu .navbar-item:last-child {
             display: none;
         }
+
+        @media (max-width: 900px) {
+            .navbar {
+                width: 0;
+                height: 0;
+                max-height: none;
+                left: 0.5rem !important;
+                top: 0.5rem;
+                overflow: visible;
+                border-radius: 0;
+                transform: none;
+                transition: box-shadow 0.3s ease, background 0.3s ease;
+                box-shadow: none;
+                background: transparent;
+                pointer-events: none;
+            }
+
+            .navbar.mobile-open {
+                width: calc(100vw - 1rem);
+                height: auto;
+                max-height: calc(100vh - 0.5rem);
+                background: linear-gradient(135deg, #4272a2, #1a2530);
+                overflow-y: auto;
+                box-shadow: 0 18px 32px rgba(0, 0, 0, 0.24);
+                border-radius: 18px;
+                pointer-events: auto;
+            }
+
+            .navbar-header {
+                padding: 0;
+                border-bottom: none;
+                display: block;
+            }
+
+            .navbar-header h2,
+            .navbar-header img {
+                display: none;
+            }
+
+            .navbar:not(.mobile-open) .navbar-user-section,
+            .navbar:not(.mobile-open) .navbar-menu {
+                display: none !important;
+            }
+
+            .nav-toggle {
+                position: fixed;
+                top: 0.75rem;
+                left: 0.75rem;
+                right: auto;
+                transform: none;
+                margin-left: 0;
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                background: linear-gradient(135deg, #4272a2, #1a2530);
+                box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+                z-index: 1101;
+                pointer-events: auto;
+            }
+
+            .nav-toggle i,
+            .navbar.pinned .nav-toggle i {
+                transform: none;
+            }
+
+            .navbar-menu {
+                display: none;
+                padding: 4.25rem 0 1rem 0;
+                min-width: calc(100vw - 1rem);
+            }
+
+            .navbar.mobile-open .navbar-menu {
+                display: block;
+            }
+
+            .navbar.mobile-open .navbar-user-section {
+                display: block !important;
+                min-width: calc(100vw - 1rem);
+                padding: 0.75rem 1rem 1rem 1rem !important;
+            }
+
+            .navbar-link {
+                padding: 14px 16px;
+            }
+
+            .navbar-text {
+                font-size: 1rem;
+                margin-left: 0;
+            }
+
+            .navbar:not(.mobile-open):hover {
+                left: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -141,7 +235,7 @@
         <div class="navbar-header">
             <img src="css/logos/BluePrint_logo.png" alt="BluePrint Logo" style="width:40px; margin-top:0px;">
             <button class="nav-toggle" id="navToggle">
-                <i class="fas fa-thumbtack"></i>
+                <i class="fas fa-bars"></i>
             </button>
             <h2 style="font-family: 'BluePrintFont'">BluePrint<span style="font-family:sans-serif">™</span></h2>
         </div>
