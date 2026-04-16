@@ -6,15 +6,29 @@
         <title>Student Lookup - BluePrint™</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="/css/style.css">
-        <script src="/js/navbar.js"></script>
+        <script src="/js/navbar.js" defer></script>
+        <script src="/js/student_lookup.js" defer></script>
     </head>
     <body>
         <div id="navbar"></div>
-        <div class="lookup-container">
-            <h1>Student Lookup</h1>
-            <div class="lookup-card">
-
-            </div>
-        </div>
+        <main class="page-shell">
+            <section class="page-header">
+                <div>
+                    <h1>Student Lookup</h1>
+                    <p class="page-subtitle">Search by student ID, first name, or last name to pull together directory information and recent attendance history.</p>
+                </div>
+            </section>
+            <section class="lookup-card panel-section">
+                <div class="panel-title">
+                    <h2>Search Students</h2>
+                    <div class="toolbar">
+                        <input type="search" id="studentLookupInput" placeholder="Search student ID or name">
+                    </div>
+                </div>
+                <div class="lookup-results" id="studentLookupResults">
+                    <div class="empty-state">Start typing to search for a student.</div>
+                </div>
+            </section>
+        </main>
     </body>
 </html>

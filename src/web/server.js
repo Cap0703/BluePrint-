@@ -474,6 +474,28 @@ app.get('/api/students', verifyToken, requireRole('administrator'), async (req, 
   }
 });
 
+app.get('/api/students/search', verifyToken, async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) {
+    return res.json([]);
+  }
+  try {
+    const result = await pool.query(`
+      SELECT id, student_id, first_name, last_name, created_at
+      FROM students
+      WHERE CAST(student_id AS TEXT) ILIKE $1
+         OR first_name ILIKE $1
+         OR last_name ILIKE $1
+      ORDER BY last_name ASC, first_name ASC, student_id ASC
+      LIMIT 25
+    `, [`%${query}%`]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to search students' });
+  }
+});
+
 app.get('/api/students/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, student_id, first_name, last_name, created_at FROM students WHERE id = $1', [req.params.id]);
@@ -1235,6 +1257,16 @@ app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error assigning periods:', err);
     res.status(500).json({ error: 'Failed to assign periods' });
+  }
+});
+
+app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
+  try {
+    await assignStatusesToLogs();
+    res.json({ message: 'Statuses assigned to all eligible logs' });
+  } catch (err) {
+    console.error('Error assigning statuses:', err);
+    res.status(500).json({ error: 'Failed to assign statuses' });
   }
 });
 

@@ -6,153 +6,44 @@
         <title>Master Logs - BluePrint™</title>
         <link rel="stylesheet" href="/css/style.css">
         <script defer src="/js/navbar.js"></script>
+        <script defer src="/js/logs.js"></script>
         <link rel="icon" type="image/png" href="/images/favicon.png">
-        <style>
-            #logsMainContainer {
-                background-color: #0073ff25;
-                border: 1px solid #00000034;
-                padding: 20px;
-                margin-top: 20px;
-                height: 800px;
-                width: 1650px;
-                overflow-y: scroll;
-                font-family: monospace;
-                white-space: pre-wrap;
-                border-radius: 10px;
-                scrollbar-color: rgba(125, 125, 125, 0.438) rgba(2, 36, 83, 0.425);
-            }
-
-            #logsMainContainer::-webkit-scrollbar-track {
-                background: #0f53b2;
-            }
-
-            #logsHeader h2 {
-                position:left;
-                margin: 0;
-            }
-
-            #logsHeader {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                margin-bottom: 20px;
-            }
-
-            #logsContent {
-                background-color: rgba(0, 0, 0, 0.339);
-                height: 1000px;
-            }
-
-            .logs-table {
-                width: 100%;
-                border-collapse: separate;
-            }
-             
-            .on-time {
-                background-color: green;
-                border-radius: 20px;
-            }
-            .late {
-                background-color: red;
-                border-radius: 20px;
-            }
-
-            .logs-table th {
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: center;
-            }
-
-            .modal {
-                display: none;
-                position: fixed;
-                z-index: 1000;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.6);
-            }
-
-            .modal-content {
-                background-color: #999999;
-                margin: 10% auto;
-                padding: 20px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                width: 50%;
-                max-width: 500px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            }
-
-            .close-btn {
-                color: #aaa;
-                float: right;
-                font-size: 28px;
-                font-weight: bold;
-                cursor: pointer;
-                line-height: 20px;
-            }
-
-            .close-btn:hover,
-            .close-btn:focus {
-                color: black;
-            }
-
-            #logForm {
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-                margin-top: 20px;
-            }
-
-            #logForm input,
-            #logForm select {
-                padding: 10px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                font-size: 14px;
-            }
-
-            #logForm button {
-                padding: 10px;
-                background-color: #0073ff;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-weight: bold;
-            }
-
-            #logForm button:hover {
-                background-color: #0056cc;
-            }
-
-            #addLogButton {
-                padding: 8px 16px;
-                background-color: #0073ff;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 14px;
-                width: fit-content;
-                position: fixed;
-                top: 20px;
-                right: 20px;
-            }
-
-            #addLogButton:hover {
-                background-color: #0056cc;
-            }
-            
-        </style>
     </head>
     <body>
         <div id="navbar"></div>
-        <main>
-            <h1>Master Logs</h1>
+        <main class="page-shell">
+            <section class="page-header">
+                <div>
+                    <h1>Master Logs</h1>
+                    <p class="page-subtitle">Review every scan, add entries manually, and clean up unassigned periods or statuses from a single operations view.</p>
+                </div>
+                <div class="quick-actions">
+                    <button id="assignPeriodsBtn" class="secondary-btn">Assign Periods</button>
+                    <button id="assignStatusesBtn" class="secondary-btn">Assign Statuses</button>
+                    <button id="addLogButton" class="primary-btn">Add Log Entry</button>
+                </div>
+            </section>
+            <section class="metrics-grid" id="logMetrics"></section>
+            <section class="master-logs-card panel-section">
+                <div class="panel-title">
+                    <h2>Live Log Stream</h2>
+                    <div class="toolbar">
+                        <input type="search" id="logSearch" placeholder="Search student, ID, room, or scanner">
+                        <select id="logStatusFilter">
+                            <option value="">All statuses</option>
+                            <option value="On Time">On Time</option>
+                            <option value="Late">Late</option>
+                            <option value="Absent">Absent</option>
+                            <option value="Excused">Excused</option>
+                            <option value="Unknown">Unknown</option>
+                        </select>
+                        <select id="logPeriodFilter">
+                            <option value="">All periods</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="logsContent"></div>
+            </section>
             <div id="logModal" class="modal">
                 <div class="modal-content">
                     <span class="close-btn" id="closeModal">&times;</span>
@@ -176,20 +67,6 @@
                     </form>
                 </div>
             </div>
-            <div id="logsMainContainer">
-                <div id="logsHeader">
-                    <button id="addLogButton">Add Log Entry</button>
-                        <div style="display:flex; gap:10px;">
-                            <button id="assignPeriodsBtn">Assign Periods</button>
-                            <button id="assignStatusesBtn">Assign Status</button>
-                        </div>
-                    <h2>Real-time Master Logs</h2>
-                </div>
-                <div id="logsContent">
-                    <p>Loading logs...</p>
-                </div>
-            </div>
         </main>
-        <script src="/js/logs.js"></script>
     </body>
 </html>
