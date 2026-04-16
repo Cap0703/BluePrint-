@@ -326,7 +326,7 @@ function assignStatusForLog(log, periods) {
     const startMinutes = timeToMinutes(period.startTime);
     if (scannedMinutes === null || startMinutes === null) return null;
     if (scannedMinutes <= startMinutes + ATTENDANCE_GRACE_PERIOD_MINUTES) {
-      return 'On Time';
+      return 'on-time';
     } else {
       return 'Late';
     }
