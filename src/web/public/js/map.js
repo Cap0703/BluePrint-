@@ -99,15 +99,13 @@ function renderRoom(room) {
   div.className = 'room';
   div.dataset.id = room.id;
   div.dataset.layer = String(room.z);
+  div.dataset.dragged = 'false';
   div.style.left = `${room.x}px`;
   div.style.top = `${room.y}px`;
   div.style.width = `${room.width}px`;
   div.style.height = `${room.height}px`;
   div.innerHTML = roomMarkup(room);
 
-  let moved = false;
-  div.addEventListener('mousedown', () => { moved = false; });
-  div.addEventListener('mousemove', () => { moved = true; });
   div.addEventListener('click', () => {
     if (deleteMode) {
       div.remove();
@@ -120,11 +118,16 @@ function renderRoom(room) {
       renderMapMetrics();
       return;
     }
-    if (!moved) {
-      selectedRoomId = room.id;
-      renderRoomList();
-      renderSelectedRoom();
+
+    if (div.dataset.dragged === 'true') {
+      div.dataset.dragged = 'false';
+      return;
     }
+
+    selectedRoomId = room.id;
+    renderRoomList();
+    renderSelectedRoom();
+    window.location.href = `/room?room_name=${encodeURIComponent(room.name)}`;
   });
 
   enableRoomDrag(div, room);
@@ -135,12 +138,44 @@ function renderRoom(room) {
 function roomMarkup(room) {
   const todayStudents = getTodayRoomStudents(room.name);
   const currentStudents = getCurrentRoomStudents(room.name);
+  const courses = mapContext.courses.filter(course => String(course.room) === String(room.name));
+  const currentPeriod = getCurrentPeriodTitle();
+  const currentPeriodLogs = mapContext.logs.filter(log =>
+    log.date_scanned === getTodayDate() &&
+    String(log.scanner_location) === String(room.name) &&
+    currentPeriod &&
+    String(log.period || '') === String(currentPeriod)
+  );
+  const lateCount = currentPeriodLogs.filter(log => normalizeStatus(log.status) === 'Late').length;
+
   return `
     <div class="room-header">${escapeHtml(room.name)}</div>
     <div class="room-content" style="padding:8px;display:grid;gap:0.35rem;">
       <div style="font-size:0.85rem;">${currentStudents.length} currently in class</div>
       <div style="font-size:0.8rem;opacity:0.9;">${todayStudents.length} student${todayStudents.length === 1 ? '' : 's'} seen today</div>
       <div style="font-size:0.8rem;opacity:0.85;">Layer ${room.z}</div>
+    </div>
+    <div class="room-hover-card">
+      <strong>${escapeHtml(room.name)} quick stats</strong>
+      <div class="room-hover-grid">
+        <div>
+          <span>Current</span>
+          <b>${currentStudents.length}</b>
+        </div>
+        <div>
+          <span>Today</span>
+          <b>${todayStudents.length}</b>
+        </div>
+        <div>
+          <span>Late now</span>
+          <b>${lateCount}</b>
+        </div>
+        <div>
+          <span>Periods</span>
+          <b>${courses.length ? escapeHtml(courses.map(course => course.period).join(', ')) : 'None'}</b>
+        </div>
+      </div>
+      <div class="room-hover-link">Click to open room details</div>
     </div>
   `;
 }
@@ -149,16 +184,24 @@ function enableRoomDrag(el, room) {
   let offsetX = 0;
   let offsetY = 0;
   let dragging = false;
+  let startX = 0;
+  let startY = 0;
 
   el.addEventListener('mousedown', event => {
     dragging = true;
     offsetX = event.offsetX;
     offsetY = event.offsetY;
+    startX = event.clientX;
+    startY = event.clientY;
+    el.dataset.dragged = 'false';
     event.stopPropagation();
   });
 
   document.addEventListener('mousemove', event => {
     if (!dragging) return;
+    if (Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) {
+      el.dataset.dragged = 'true';
+    }
     const rect = document.getElementById('mapCanvas').getBoundingClientRect();
     room.x = event.clientX - rect.left - offsetX;
     room.y = event.clientY - rect.top - offsetY;
@@ -330,7 +373,7 @@ function renderMapMetrics() {
   const currentAttendanceRooms = new Set(
     mapContext.logs
       .filter(log =>
-        log.date_scanned === new Date().toISOString().split('T')[0] &&
+        log.date_scanned === getTodayDate() &&
         currentPeriod &&
         String(log.period || '') === String(currentPeriod)
       )
@@ -339,7 +382,7 @@ function renderMapMetrics() {
   const currentStudents = new Set(
     mapContext.logs
       .filter(log =>
-        log.date_scanned === new Date().toISOString().split('T')[0] &&
+        log.date_scanned === getTodayDate() &&
         currentPeriod &&
         String(log.period || '') === String(currentPeriod)
       )
@@ -348,7 +391,7 @@ function renderMapMetrics() {
   );
   const todayRooms = new Set(
     mapContext.logs
-      .filter(log => log.date_scanned === new Date().toISOString().split('T')[0])
+      .filter(log => log.date_scanned === getTodayDate())
       .map(log => String(log.scanner_location))
   );
 
@@ -370,7 +413,7 @@ function renderMapMetrics() {
 }
 
 function getTodayRoomStudents(roomName) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
   return [...new Set(
     mapContext.logs
       .filter(log => log.date_scanned === today && String(log.scanner_location) === String(roomName))
@@ -382,7 +425,7 @@ function getTodayRoomStudents(roomName) {
 function getCurrentRoomStudents(roomName) {
   const currentPeriod = getCurrentPeriodTitle();
   if (!currentPeriod) return [];
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
   return [...new Set(
     mapContext.logs
       .filter(log =>
@@ -413,6 +456,21 @@ function timeToMinutes(value) {
   const [hours, minutes] = String(value).split(':').map(Number);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
   return hours * 60 + minutes;
+}
+
+function normalizeStatus(status) {
+  const value = String(status || 'Unknown').trim().toLowerCase();
+  if (value === 'on-time' || value === 'on time' || value === 'ontime') return 'On Time';
+  if (value === 'late') return 'Late';
+  if (value === 'absent') return 'Absent';
+  if (value === 'excused') return 'Excused';
+  return 'Unknown';
+}
+
+function getTodayDate() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60000).toISOString().split('T')[0];
 }
 
 function escapeHtml(value) {
