@@ -8,7 +8,8 @@ const mapData = {
 
 const mapContext = {
   logs: [],
-  courses: []
+  courses: [],
+  calendar: null
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -133,10 +134,12 @@ function renderRoom(room) {
 
 function roomMarkup(room) {
   const todayStudents = getTodayRoomStudents(room.name);
+  const currentStudents = getCurrentRoomStudents(room.name);
   return `
     <div class="room-header">${escapeHtml(room.name)}</div>
     <div class="room-content" style="padding:8px;display:grid;gap:0.35rem;">
-      <div style="font-size:0.85rem;">${todayStudents.length} student${todayStudents.length === 1 ? '' : 's'} seen today</div>
+      <div style="font-size:0.85rem;">${currentStudents.length} currently in class</div>
+      <div style="font-size:0.8rem;opacity:0.9;">${todayStudents.length} student${todayStudents.length === 1 ? '' : 's'} seen today</div>
       <div style="font-size:0.8rem;opacity:0.85;">Layer ${room.z}</div>
     </div>
   `;
@@ -243,12 +246,14 @@ async function loadMap() {
 async function loadMapContext() {
   const token = localStorage.getItem('auth_token');
   try {
-    const [logsRes, coursesRes] = await Promise.all([
+    const [logsRes, coursesRes, calendarRes] = await Promise.all([
       fetch('/api/logs', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } })
+      fetch('/api/courses', { headers: { Authorization: `Bearer ${token}` } }),
+      fetch('/api/calendar/today', { headers: { Authorization: `Bearer ${token}` } })
     ]);
     mapContext.logs = logsRes.ok ? await logsRes.json() : [];
     mapContext.courses = coursesRes.ok ? await coursesRes.json() : [];
+    mapContext.calendar = calendarRes.ok ? await calendarRes.json() : null;
   } catch (error) {
     console.error('Failed to load map context:', error);
   }
@@ -272,7 +277,7 @@ function renderRoomList() {
   container.innerHTML = sortedRooms.map(room => `
     <button class="map-room-button ${selectedRoomId === room.id ? 'active' : ''}" data-room-id="${room.id}">
       <strong>${escapeHtml(room.name)}</strong>
-      <div class="muted">Layer ${room.z} | ${getTodayRoomStudents(room.name).length} seen today</div>
+      <div class="muted">Layer ${room.z} | ${getCurrentRoomStudents(room.name).length} current | ${getTodayRoomStudents(room.name).length} today</div>
     </button>
   `).join('');
 
@@ -295,12 +300,17 @@ function renderSelectedRoom() {
 
   const courses = mapContext.courses.filter(course => String(course.room) === String(room.name));
   const studentsToday = getTodayRoomStudents(room.name);
+  const studentsCurrent = getCurrentRoomStudents(room.name);
   const recentLogs = mapContext.logs.filter(log => String(log.scanner_location) === String(room.name)).slice(0, 4);
 
   container.innerHTML = `
     <div class="activity-item">
       <strong>${escapeHtml(room.name)}</strong>
       <div class="muted">Layer ${room.z} | ${courses.length ? courses.map(course => course.period).join(', ') : 'No configured periods'}</div>
+    </div>
+    <div class="activity-item">
+      <strong>${studentsCurrent.length}</strong>
+      <div class="muted">Students currently in class</div>
     </div>
     <div class="activity-item">
       <strong>${studentsToday.length}</strong>
@@ -316,6 +326,26 @@ function renderSelectedRoom() {
 }
 
 function renderMapMetrics() {
+  const currentPeriod = getCurrentPeriodTitle();
+  const currentAttendanceRooms = new Set(
+    mapContext.logs
+      .filter(log =>
+        log.date_scanned === new Date().toISOString().split('T')[0] &&
+        currentPeriod &&
+        String(log.period || '') === String(currentPeriod)
+      )
+      .map(log => String(log.scanner_location))
+  );
+  const currentStudents = new Set(
+    mapContext.logs
+      .filter(log =>
+        log.date_scanned === new Date().toISOString().split('T')[0] &&
+        currentPeriod &&
+        String(log.period || '') === String(currentPeriod)
+      )
+      .map(log => log.student_id)
+      .filter(Boolean)
+  );
   const todayRooms = new Set(
     mapContext.logs
       .filter(log => log.date_scanned === new Date().toISOString().split('T')[0])
@@ -325,7 +355,8 @@ function renderMapMetrics() {
   const metrics = [
     { label: 'Rooms', value: mapData.rooms.length, footnote: 'Saved on the current layout' },
     { label: 'Scanners', value: mapData.scanners.length, footnote: 'Placed on the layout' },
-    { label: 'Active Today', value: todayRooms.size, footnote: 'Rooms with attendance scans today' },
+    { label: 'Current Students', value: currentStudents.size, footnote: currentPeriod ? `${currentPeriod} attendance now` : 'No active class period right now' },
+    { label: 'Active Today', value: todayRooms.size, footnote: currentPeriod ? `${currentAttendanceRooms.size} rooms active this period` : 'Rooms with attendance scans today' },
     { label: 'Layer', value: getCurrentLayer(), footnote: 'Currently visible floor or zone' }
   ];
 
@@ -346,6 +377,42 @@ function getTodayRoomStudents(roomName) {
       .map(log => log.student_id)
       .filter(Boolean)
   )];
+}
+
+function getCurrentRoomStudents(roomName) {
+  const currentPeriod = getCurrentPeriodTitle();
+  if (!currentPeriod) return [];
+  const today = new Date().toISOString().split('T')[0];
+  return [...new Set(
+    mapContext.logs
+      .filter(log =>
+        log.date_scanned === today &&
+        String(log.scanner_location) === String(roomName) &&
+        String(log.period || '') === String(currentPeriod)
+      )
+      .map(log => log.student_id)
+      .filter(Boolean)
+  )];
+}
+
+function getCurrentPeriodTitle() {
+  const events = mapContext.calendar?.events || [];
+  if (!events.length) return null;
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const active = events.find(event => {
+    const startMinutes = timeToMinutes(event.startTime);
+    const endMinutes = timeToMinutes(event.endTime);
+    return startMinutes !== null && endMinutes !== null && currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  });
+  return active?.title || null;
+}
+
+function timeToMinutes(value) {
+  if (!value) return null;
+  const [hours, minutes] = String(value).split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
 }
 
 function escapeHtml(value) {

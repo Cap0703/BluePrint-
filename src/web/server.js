@@ -32,8 +32,27 @@ app.use(session({
 }));
 
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
+const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
 const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
+let ATTENDANCE_GRACE_PERIOD_MINUTES = Number(process.env.GRACE_PERIOD_MINUTES || 10);
+
+let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
+
+function loadSettings() {
+  try {
+    const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    settings = JSON.parse(data);
+    ATTENDANCE_GRACE_PERIOD_MINUTES = settings.gracePeriodMinutes;
+  } catch (err) {
+    // Use default, and save it
+    saveSettings();
+  }
+}
+
+function saveSettings() {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+}
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -273,17 +292,40 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
+function extractLogTimeValue(value) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  const parts = normalized.split(' ');
+  return parts.length > 1 ? parts[parts.length - 1] : normalized;
+}
+
+function normalizeOptionalValue(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (
+    !normalized ||
+    normalized.toLowerCase() === 'auto' ||
+    normalized.toLowerCase() === 'auto assign' ||
+    normalized.toLowerCase() === 'null'
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
 function assignStatusForLog(log, periods) {
-  if (!log.status || log.status === 'Unknown' || log.status === 'na') {
-    if (!log.period) return 'Unknown';
+  const normalizedStatus = normalizeOptionalValue(log.status);
+  if (!normalizedStatus || normalizedStatus === 'Unknown' || normalizedStatus === 'na') {
+    if (!log.period) return null;
     const period = periods.find(p => p.title === log.period);
-    if (!period) return 'Unknown';
-    const logTimeStr = log.time_scanned?.split(" ")[1];
-    if (!logTimeStr) return 'Unknown';
+    if (!period) return null;
+    const logTimeStr = extractLogTimeValue(log.time_scanned);
+    if (!logTimeStr) return null;
     const scannedMinutes = timeToMinutes(logTimeStr);
     const startMinutes = timeToMinutes(period.startTime);
-    if (scannedMinutes === null || startMinutes === null) return 'Unknown';
-    if (scannedMinutes <= startMinutes) {
+    if (scannedMinutes === null || startMinutes === null) return null;
+    if (scannedMinutes <= startMinutes + ATTENDANCE_GRACE_PERIOD_MINUTES) {
       return 'On Time';
     } else {
       return 'Late';
@@ -298,7 +340,7 @@ function assignPeriodForLog(log, periods) {
     console.log('No time_scanned for log:', log.id);
     return null;
   }
-  const logTime = log.time_scanned.split(" ")[1];
+  const logTime = extractLogTimeValue(log.time_scanned);
   if (!logTime) {
     console.log('Invalid timestamp format for log:', log.id, log.time_scanned);
     return null;
@@ -323,7 +365,13 @@ function assignPeriodForLog(log, periods) {
 
 async function assignStatusesToLogs() {
   try {
-    const result = await pool.query("SELECT * FROM logs WHERE status IS NULL OR status = '' OR status = 'na' OR status = 'Unknown'");
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      WHERE status IS NULL
+         OR BTRIM(status) = ''
+         OR LOWER(BTRIM(status)) IN ('na', 'unknown', 'auto', 'auto assign', 'null')
+    `);
     //console.log(`Found ${result.rows.length} logs without assigned statuses`);
     const logsByDate = {};
     result.rows.forEach(log => {
@@ -1205,13 +1253,51 @@ app.post('/api/logs', verifyToken, async (req, res) => {
     status
   } = req.body;
   try {
+    period = normalizeOptionalValue(period);
+    status = normalizeOptionalValue(status);
+    first_name = normalizeOptionalValue(first_name);
+    last_name = normalizeOptionalValue(last_name);
+    scanner_location = normalizeOptionalValue(scanner_location);
+    scanner_id = normalizeOptionalValue(scanner_id);
+    student_id = normalizeOptionalValue(student_id);
+    date_scanned = normalizeOptionalValue(date_scanned);
+    time_scanned = normalizeOptionalValue(time_scanned);
+
+    if (student_id && (!first_name || !last_name)) {
+      const studentLookup = await pool.query(
+        'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
+        [student_id]
+      );
+      if (studentLookup.rows.length > 0) {
+        first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
+        last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
+      } else {
+        const priorLogLookup = await pool.query(`
+          SELECT first_name, last_name
+          FROM logs
+          WHERE student_id = $1
+            AND first_name IS NOT NULL
+            AND BTRIM(first_name) <> ''
+            AND last_name IS NOT NULL
+            AND BTRIM(last_name) <> ''
+          ORDER BY id DESC
+          LIMIT 1
+        `, [student_id]);
+        if (priorLogLookup.rows.length > 0) {
+          first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
+          last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
+        }
+      }
+    }
+
     if (date_scanned && time_scanned) {
       const time24h = convertTo24HourFormat(time_scanned);
+      time_scanned = time24h;
       const fullTimestamp = `${date_scanned} ${time24h}`;
       const periods = await getPeriodsForDate(date_scanned);
       const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
       if (computed) {
-        period = computed;
+        period = period || computed;
         //console.log(`Computed period for new log: ${period}`);
       } else {
         console.log('Could not compute period for new log, will fill later');
@@ -1332,6 +1418,22 @@ app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
 
 
 
+/*---------------------------------------- Settings Endpoints ----------------------------------------------*/
+app.get('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
+  res.json({ value: ATTENDANCE_GRACE_PERIOD_MINUTES });
+});
+
+app.put('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
+  const { value } = req.body;
+  if (isNaN(value) || value < 0) {
+    return res.status(400).json({ error: 'Invalid value' });
+  }
+  settings.gracePeriodMinutes = Number(value);
+  saveSettings();
+  ATTENDANCE_GRACE_PERIOD_MINUTES = Number(value);
+  res.json({ success: true });
+});
+
 /*----------------------------------------Routes----------------------------------------*/
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -1386,6 +1488,7 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 /*----------------------------------------Start Server----------------------------------------*/
 async function startServer() {
   await initializeDatabase();
+  loadSettings();
   app.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
   });

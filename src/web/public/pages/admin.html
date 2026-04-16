@@ -287,6 +287,17 @@
             </div>
         </div>
     </div>
+    <div class="admin-container">
+        <div class="admin-card">
+            <h2>System Settings</h2>
+            <div class="form-group">
+                <label for="gracePeriod">Attendance Grace Period (minutes)</label>
+                <input type="number" id="gracePeriod" min="0" value="10">
+            </div>
+            <button id="updateSettingsBtn" class="btn-primary">Update Settings</button>
+            <p id="settingsMessage" class="form-message"></p>
+        </div>
+    </div>
     <div id="editUserModal" class="modal">
         <div class="modal-content">
             <span class="close-btn" id="closeEditUserModal">&times;</span>
@@ -336,6 +347,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await loadCourses();
             await loadUsers();
+            await loadSettings();
             setupCourseForm();
             setupRoleToggle();
         });
@@ -725,6 +737,48 @@
                 alert('Error deleting user');
             }
         }
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings/grace-period', {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('gracePeriod').value = data.value;
+                }
+            } catch (err) {
+                console.error('Failed to load settings');
+            }
+        }
+
+        document.getElementById('updateSettingsBtn').addEventListener('click', async () => {
+            const value = document.getElementById('gracePeriod').value;
+            const messageEl = document.getElementById('settingsMessage');
+            try {
+                const res = await fetch('/api/settings/grace-period', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ value })
+                });
+                if (res.ok) {
+                    messageEl.textContent = 'Settings updated successfully';
+                    messageEl.style.color = 'green';
+                } else {
+                    const error = await res.json();
+                    messageEl.textContent = error.error || 'Failed to update';
+                    messageEl.style.color = 'red';
+                }
+            } catch (err) {
+                messageEl.textContent = 'Server error';
+                messageEl.style.color = 'red';
+            }
+        });
     </script>
 </body>
 </html>

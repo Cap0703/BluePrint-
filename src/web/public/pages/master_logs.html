@@ -49,13 +49,14 @@
                     <span class="close-btn" id="closeModal">&times;</span>
                     <h2>Add Log Entry</h2>
                     <form id="logForm">
-                        <input type="text" name="first_name" placeholder="First Name" required>
-                        <input type="text" name="last_name" placeholder="Last Name" required>
+                        <input type="text" name="first_name" placeholder="First Name (optional, auto-fill if student exists)">
+                        <input type="text" name="last_name" placeholder="Last Name (optional, auto-fill if student exists)">
                         <input type="text" name="student_id" placeholder="Student ID" required>
-                        <input type="text" name="period" placeholder="Period">
+                        <input type="text" name="period" placeholder="Period (leave blank for auto assign)">
                         <input type="text" name="scanner_location" placeholder="Scanner Location" required>
                         <input type="text" name="scanner_id" placeholder="Scanner ID" required>
                         <select type="text" name="status">
+                            <option value="">Auto Assign</option>
                             <option value="on-time">On Time</option>
                             <option value="late">Late</option>
                             <option value="absent">Absent</option>
