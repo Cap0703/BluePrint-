@@ -80,7 +80,7 @@ function renderProfile() {
     `).join('');
   }
 
-  const recentLogs = relatedLogs.slice(0, 8);
+  /*const recentLogs = relatedLogs.slice(0, 8);
   const activityContainer = document.getElementById('profileActivity');
   if (!recentLogs.length) {
     activityContainer.innerHTML = '<div class="empty-state">No attendance activity has been recorded yet.</div>';
@@ -93,7 +93,7 @@ function renderProfile() {
       <div class="muted">${escapeHtml(log.student_id || 'No student ID')} | Room ${escapeHtml(log.scanner_location || 'Unknown')} | ${escapeHtml(log.period || 'Unassigned period')}</div>
       <div class="muted">${formatDate(log.date_scanned)} at ${escapeHtml(log.time_scanned || 'Unknown time')} | ${normalizeStatus(log.status)}</div>
     </div>
-  `).join('');
+  `).join('');*/
 }
 
 function normalizeRole(role) {
