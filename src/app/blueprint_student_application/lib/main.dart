@@ -373,10 +373,15 @@ class nfcScannerButtonEnable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: () {
-          String message = getNFCMessage(studentID, token) as String;
-          writeNFCTag(message);
-        
+      onPressed: () async {
+          String message = await getNFCMessage(studentID, token);
+          if (message.isNotEmpty){
+            writeNFCTag(message);
+          }
+          else {
+            print("Message write request failed");
+          }
+          
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.indigo.shade700,
