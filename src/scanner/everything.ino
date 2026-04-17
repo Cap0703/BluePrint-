@@ -6,7 +6,6 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-
 #define RX_GPIO 16
 #define TX_GPIO 17
 
@@ -297,79 +296,49 @@ int scanFingerprint() {
 }
 
 void setup() {
-  if(mode.equals("enroll")) {
-    Serial.begin(115200);
-    while (!Serial);
-    delay(100);
+  Serial.begin(115200);
+  while (!Serial);
+  delay(100);
 
-    mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
-    finger.begin(57600);
+  mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
+  finger.begin(57600);
 
-    if (!finger.verifyPassword()) {
-      Serial.println("Fingerprint sensor not found! Check wiring.");
-      while (1) delay(1);
-    }
-    Serial.println("Fingerprint sensor OK.");
-
-    if (!LittleFS.begin(true)) {
-      Serial.println("LittleFS mount failed!");
-      while (1) delay(1);
-    }
-    Serial.println("LittleFS ready.");
-
-    loadStudents();
-
-    id = getNextFreeSlot();
-    if (id == -1) {
-      handleStorageFull();
-    }
-    Serial.print("Next free slot: #");
-    Serial.println(id);
-
-  } else {
-
-    Serial.begin(115200);
-    while (!Serial);
-    delay(100);
-
-    mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
-    finger.begin(57600);
-
-    if (!finger.verifyPassword()) {
-      Serial.println("Fingerprint sensor not found!");
-      while (1) delay(1);
-    }
-
-    Serial.println("Fingerprint sensor ready.");
-
-    if (!LittleFS.begin(true)) {
-      Serial.println("LittleFS mount failed!");
-      while (1) delay(1);
-    }
-
-    Serial.println("LittleFS ready.");
-
-    loadStudents();
-
-    Serial.println("Connecting to WiFi...");
-
-    WiFi.begin(ssid, password);
-
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    Serial.println();
-    Serial.println("WiFi connected.");
-    Serial.println(WiFi.localIP());
-
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-    Serial.println("Signing into server...");
-
-    signIn();
+  if (!finger.verifyPassword()) {
+    Serial.println("Fingerprint sensor not found! Check wiring.");
+    while (1) delay(1);
   }
+  Serial.println("Fingerprint sensor OK.");
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed!");
+    while (1) delay(1);
+  }
+  Serial.println("LittleFS ready.");
+  loadStudents();
+
+  id = getNextFreeSlot();
+  if (id == -1) {
+    handleStorageFull();
+  }
+  Serial.print("Next free slot: #");
+  Serial.println(id);
+
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi connected.");
+  Serial.println(WiFi.localIP());
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  Serial.println("Signing into server...");
+
+  signIn();
 }
 
 void loop() {
@@ -395,32 +364,32 @@ void loop() {
     while (getFingerprintEnroll(id, studentID) != FINGERPRINT_OK) {
       Serial.println("Retrying enrollment...");
     }
+
   } else {
-  
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1000, FINGERPRINT_LED_BLUE);
 
-  int fingerID = scanFingerprint();
+    int fingerID = scanFingerprint();
 
-  if (fingerID < 0) return;
+    if (fingerID < 0) return;
 
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
 
-  Serial.print("Fingerprint matched slot #");
-  Serial.println(fingerID);
+    Serial.print("Fingerprint matched slot #");
+    Serial.println(fingerID);
 
-  int studentID = findStudent(fingerID);
+    int studentID = findStudent(fingerID);
 
-  if (studentID <= 0) {
-    Serial.println("No student mapped to this fingerprint.");
-    delay(2000);
-    return;
-  }
+    if (studentID <= 0) {
+      Serial.println("No student mapped to this fingerprint.");
+      delay(2000);
+      return;
+    }
 
-  Serial.print("Student ID: ");
-  Serial.println(studentID);
+    Serial.print("Student ID: ");
+    Serial.println(studentID);
 
-  sendLog(studentID);
+    sendLog(studentID);
 
-  delay(3000);
+    delay(3000);
   }
 }
