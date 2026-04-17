@@ -27,10 +27,13 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
 const int daylightOffset_sec = 3600;
 
-int students[MAX_FINGERPRINT_SLOTS + 1] = {0};
-char* mode = "enroll";
+String mode = "enroll";       // FIX: was char*, changed to String
 
 String authToken = "";
+
+int students[MAX_FINGERPRINT_SLOTS + 1] = {0};
+int id = 0;                   // FIX: added global declaration
+int studentID = 0;            // FIX: added global declaration
 
 HardwareSerial mySerial(2);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
@@ -229,12 +232,14 @@ void getDateTime(String &dateStr, String &timeStr) {
   timeStr = String(timeBuffer);
 }
 
-char* getCommand() {
-  if (authToken =="") return;
+// FIX: changed return type to void (function never returned a value),
+//      fixed early return, and replaced JS template literal with concatenation
+void getCommand() {
+  if (authToken == "") return;
 
   HTTPClient http;
 
-  http.begin(serverEndpoint + $"/api/scanners/{SCANNER_ID}/terminal");
+  http.begin(serverEndpoint + "/api/scanners/" + String(SCANNER_ID) + "/terminal");  // FIX: removed invalid $"" syntax
 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
@@ -274,11 +279,15 @@ void sendLog(int studentID) {
     Serial.println("Attendance logged.");
   } else {
     Serial.print("Log failed: ");
-    //save for syncing here?
     Serial.println(code);
   }
 
   http.end();
+}
+
+int findStudent(int fingerprintID) {
+  if (fingerprintID < 1 || fingerprintID > MAX_FINGERPRINT_SLOTS) return -1;
+  return students[fingerprintID];
 }
 
 int scanFingerprint() {
@@ -342,7 +351,7 @@ void setup() {
 }
 
 void loop() {
-  if(mode.equals("enroll")){
+  if (mode == "enroll") {    // FIX: == works correctly on String type
     id = getNextFreeSlot();
     if (id == -1) {
       handleStorageFull();
