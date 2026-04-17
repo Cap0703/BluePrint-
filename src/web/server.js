@@ -11,6 +11,7 @@ import session from 'express-session';
 import cors from 'cors';
 import crypto from 'crypto';
 import { get } from 'http';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,8 +32,40 @@ app.use(session({
 }));
 
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
+const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
 const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
+let ATTENDANCE_GRACE_PERIOD_MINUTES = Number(process.env.GRACE_PERIOD_MINUTES || 10);
+
+let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
+
+function loadSettings() {
+  try {
+    const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    settings = JSON.parse(data);
+    ATTENDANCE_GRACE_PERIOD_MINUTES = settings.gracePeriodMinutes;
+  } catch (err) {
+    // Use default, and save it
+    saveSettings();
+  }
+}
+
+function saveSettings() {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+}
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => {
+    return req.body.email + '_' + req.ip;
+  },
+  message: {
+    error: 'Too many login attempts. Please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -259,18 +292,41 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
+function extractLogTimeValue(value) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  const parts = normalized.split(' ');
+  return parts.length > 1 ? parts[parts.length - 1] : normalized;
+}
+
+function normalizeOptionalValue(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (
+    !normalized ||
+    normalized.toLowerCase() === 'auto' ||
+    normalized.toLowerCase() === 'auto assign' ||
+    normalized.toLowerCase() === 'null'
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
 function assignStatusForLog(log, periods) {
-  if (!log.status || log.status === 'Unknown' || log.status === 'na') {
-    if (!log.period) return 'Unknown';
+  const normalizedStatus = normalizeOptionalValue(log.status);
+  if (!normalizedStatus || normalizedStatus === 'Unknown' || normalizedStatus === 'na') {
+    if (!log.period) return null;
     const period = periods.find(p => p.title === log.period);
-    if (!period) return 'Unknown';
-    const logTimeStr = log.time_scanned?.split(" ")[1];
-    if (!logTimeStr) return 'Unknown';
+    if (!period) return null;
+    const logTimeStr = extractLogTimeValue(log.time_scanned);
+    if (!logTimeStr) return null;
     const scannedMinutes = timeToMinutes(logTimeStr);
     const startMinutes = timeToMinutes(period.startTime);
-    if (scannedMinutes === null || startMinutes === null) return 'Unknown';
-    if (scannedMinutes <= startMinutes) {
-      return 'On Time';
+    if (scannedMinutes === null || startMinutes === null) return null;
+    if (scannedMinutes <= startMinutes + ATTENDANCE_GRACE_PERIOD_MINUTES) {
+      return 'on-time';
     } else {
       return 'Late';
     }
@@ -284,7 +340,7 @@ function assignPeriodForLog(log, periods) {
     console.log('No time_scanned for log:', log.id);
     return null;
   }
-  const logTime = log.time_scanned.split(" ")[1];
+  const logTime = extractLogTimeValue(log.time_scanned);
   if (!logTime) {
     console.log('Invalid timestamp format for log:', log.id, log.time_scanned);
     return null;
@@ -309,7 +365,13 @@ function assignPeriodForLog(log, periods) {
 
 async function assignStatusesToLogs() {
   try {
-    const result = await pool.query("SELECT * FROM logs WHERE status IS NULL OR status = '' OR status = 'na' OR status = 'Unknown'");
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      WHERE status IS NULL
+         OR BTRIM(status) = ''
+         OR LOWER(BTRIM(status)) IN ('na', 'unknown', 'auto', 'auto assign', 'null')
+    `);
     //console.log(`Found ${result.rows.length} logs without assigned statuses`);
     const logsByDate = {};
     result.rows.forEach(log => {
@@ -457,6 +519,28 @@ app.get('/api/students', verifyToken, requireRole('administrator'), async (req, 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+app.get('/api/students/search', verifyToken, async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) {
+    return res.json([]);
+  }
+  try {
+    const result = await pool.query(`
+      SELECT id, student_id, first_name, last_name, created_at
+      FROM students
+      WHERE CAST(student_id AS TEXT) ILIKE $1
+         OR first_name ILIKE $1
+         OR last_name ILIKE $1
+      ORDER BY last_name ASC, first_name ASC, student_id ASC
+      LIMIT 25
+    `, [`%${query}%`]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to search students' });
   }
 });
 
@@ -780,9 +864,35 @@ const scannerTerminalSessions = {};
 
 function getScannerSession(scannerId) {
   if (!scannerTerminalSessions[scannerId]) {
-    scannerTerminalSessions[scannerId] = { mode: 'scanner' };
+    scannerTerminalSessions[scannerId] = {
+      mode: 'scanner',
+      pendingCommand: null,
+      pendingCommandId: 0,
+      lastOutput: '',
+      lastOutputTime: null,
+      outputVersion: 0,
+      outputHistory: [],
+      scannerLastSeenAt: null
+    };
   }
   return scannerTerminalSessions[scannerId];
+}
+
+function normalizeScannerMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (value === 'enroll' || value === 'enrollment') return 'enroll';
+  return 'scanner';
+}
+
+function modeFromTerminalCommand(command, currentMode) {
+  const value = String(command || '').trim().toLowerCase();
+  if (value === 'enroll' || value === 'mode enroll' || value === 'enter enroll') {
+    return 'enroll';
+  }
+  if (value === 'scanner' || value === 'scan' || value === 'mode scanner' || value === 'exit' || value === 'cancel') {
+    return 'scanner';
+  }
+  return currentMode;
 }
 
 app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator'), async (req, res) => {
@@ -793,47 +903,78 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   }
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
+  session.mode = modeFromTerminalCommand(cmd, session.mode);
   session.pendingCommand = cmd;
+  session.pendingCommandId += 1;
   session.commandSentTime = new Date();
   res.json({ 
     message: 'Command queued for scanner',
-    pending: true
+    pending: true,
+    mode: session.mode,
+    commandId: session.pendingCommandId
   });
 });
 
 app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
+  session.scannerLastSeenAt = new Date();
   if (session.pendingCommand) {
     const cmd = session.pendingCommand;
+    const commandId = session.pendingCommandId;
     session.pendingCommand = null;
     res.json({ 
       command: cmd,
-      mode: session.mode 
+      mode: session.mode,
+      commandId
     });
   } else {
     res.json({ 
       command: null,
-      mode: session.mode 
+      mode: session.mode,
+      commandId: session.pendingCommandId
     });
   }
 });
 
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
-  const { output } = req.body;
+  const { output, mode, commandId } = req.body;
   const session = getScannerSession(scannerId);
-  session.lastOutput = output;
-  session.lastOutputTime = new Date();
-  res.json({ message: 'Output received' });
+  const now = new Date();
+  session.scannerLastSeenAt = now;
+  session.mode = normalizeScannerMode(mode || session.mode);
+
+  if (typeof output === 'string' && output.trim() !== '') {
+    session.lastOutput = output;
+    session.lastOutputTime = now;
+    session.outputVersion += 1;
+    session.outputHistory.push({
+      version: session.outputVersion,
+      output,
+      timestamp: now,
+      commandId: commandId ?? null
+    });
+    if (session.outputHistory.length > 50) {
+      session.outputHistory = session.outputHistory.slice(-50);
+    }
+  }
+
+  res.json({ message: 'Output received', mode: session.mode });
 });
 
 app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administrator'), (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
+  const afterVersion = Number(req.query.afterVersion || 0);
+  const entries = session.outputHistory.filter(entry => entry.version > afterVersion);
   res.json({ 
     output: session.lastOutput || '', 
-    timestamp: session.lastOutputTime || null 
+    timestamp: session.lastOutputTime || null,
+    mode: session.mode,
+    outputVersion: session.outputVersion,
+    scannerLastSeenAt: session.scannerLastSeenAt || null,
+    entries
   });
 });
 
@@ -841,7 +982,7 @@ app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administr
 /*---------------------------------------API Endpoints---------------------------------------*/
 
 /*-------Authentication Endpoints-------*/
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -1169,13 +1310,51 @@ app.post('/api/logs', verifyToken, async (req, res) => {
     status
   } = req.body;
   try {
+    period = normalizeOptionalValue(period);
+    status = normalizeOptionalValue(status);
+    first_name = normalizeOptionalValue(first_name);
+    last_name = normalizeOptionalValue(last_name);
+    scanner_location = normalizeOptionalValue(scanner_location);
+    scanner_id = normalizeOptionalValue(scanner_id);
+    student_id = normalizeOptionalValue(student_id);
+    date_scanned = normalizeOptionalValue(date_scanned);
+    time_scanned = normalizeOptionalValue(time_scanned);
+
+    if (student_id && (!first_name || !last_name)) {
+      const studentLookup = await pool.query(
+        'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
+        [student_id]
+      );
+      if (studentLookup.rows.length > 0) {
+        first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
+        last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
+      } else {
+        const priorLogLookup = await pool.query(`
+          SELECT first_name, last_name
+          FROM logs
+          WHERE student_id = $1
+            AND first_name IS NOT NULL
+            AND BTRIM(first_name) <> ''
+            AND last_name IS NOT NULL
+            AND BTRIM(last_name) <> ''
+          ORDER BY id DESC
+          LIMIT 1
+        `, [student_id]);
+        if (priorLogLookup.rows.length > 0) {
+          first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
+          last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
+        }
+      }
+    }
+
     if (date_scanned && time_scanned) {
       const time24h = convertTo24HourFormat(time_scanned);
+      time_scanned = time24h;
       const fullTimestamp = `${date_scanned} ${time24h}`;
       const periods = await getPeriodsForDate(date_scanned);
       const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
       if (computed) {
-        period = computed;
+        period = period || computed;
         //console.log(`Computed period for new log: ${period}`);
       } else {
         console.log('Could not compute period for new log, will fill later');
@@ -1221,6 +1400,16 @@ app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error assigning periods:', err);
     res.status(500).json({ error: 'Failed to assign periods' });
+  }
+});
+
+app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
+  try {
+    await assignStatusesToLogs();
+    res.json({ message: 'Statuses assigned to all eligible logs' });
+  } catch (err) {
+    console.error('Error assigning statuses:', err);
+    res.status(500).json({ error: 'Failed to assign statuses' });
   }
 });
 
@@ -1286,6 +1475,22 @@ app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
 
 
 
+/*---------------------------------------- Settings Endpoints ----------------------------------------------*/
+app.get('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
+  res.json({ value: ATTENDANCE_GRACE_PERIOD_MINUTES });
+});
+
+app.put('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
+  const { value } = req.body;
+  if (isNaN(value) || value < 0) {
+    return res.status(400).json({ error: 'Invalid value' });
+  }
+  settings.gracePeriodMinutes = Number(value);
+  saveSettings();
+  ATTENDANCE_GRACE_PERIOD_MINUTES = Number(value);
+  res.json({ success: true });
+});
+
 /*----------------------------------------Routes----------------------------------------*/
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -1340,6 +1545,7 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 /*----------------------------------------Start Server----------------------------------------*/
 async function startServer() {
   await initializeDatabase();
+  loadSettings();
   app.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
   });

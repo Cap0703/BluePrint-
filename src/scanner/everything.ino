@@ -22,7 +22,7 @@ const char* SCANNER_ID = "1";
 const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
-String serverEndpoint = "http://blueprint-tm.ddns.net";
+String serverEndpoint = "http://blueprint.boo";
 
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;

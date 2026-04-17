@@ -3,25 +3,143 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Attendance Log Manager</title>
+  <title>Dashboard - BluePrint</title>
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/favicon.ico">
+  <script defer src="/js/navbar.js"></script>
+  <script defer src="/js/dashboard.js"></script>
 </head>
 <body>
   <div id="navbar"></div>
-  <h1>Welcome to BluePrint™!</h1>
-  <p style="text-align: center; padding:1.2em; width: 50%;background-color: rgba(118, 118, 118, 0.7); margin-left: 25%; border-radius: 8px;">Your all-in-one attendance management solution.</p>
-<script src="/js/navbar.js"></script>
-  <div class="dashboard">
-    <div class="dash-card">
-      <h2>Attendance Log Manager</h2>
-      <p>Manage and review attendance logs efficiently.</p>
-      <button onclick="location.href='/master_logs'">Go to Attendance Logs</button>
-    </div>
-    <div class="dash-card">
-      <h2>Calendar</h2>
-      <p>See the current periods today.</p>
-      <button onclick="location.href='/calendar'">Go to Calendar</button>
-    </div>
-  </div>
+  <main class="page-shell dashboard-shell">
+    <section class="page-header dashboard-header">
+      <div>
+        <div class="pill" id="dashboardRolePill">Attendance dashboard</div>
+        <h1 id="dashboardTitle">Today's Attendance Summary</h1>
+        <p class="page-subtitle" id="dashboardSubtitle">Track who is present, who needs attention, and what still needs action across the day.</p>
+      </div>
+      <div class="toolbar dashboard-toolbar">
+        <input type="search" id="dashboardSearch" placeholder="Search student name or ID">
+        <select id="dashboardClassFilter">
+          <option value="">All classes</option>
+        </select>
+        <input type="date" id="dashboardDateFilter">
+        <a class="secondary-btn dashboard-inline-link" href="/lookup">Student Lookup</a>
+      </div>
+    </section>
+
+    <section class="glass-panel hero-card dashboard-hero">
+      <div class="dashboard-hero-grid">
+        <div class="dashboard-summary-copy">
+          <span class="dashboard-kicker">Core Overview</span>
+          <h2 id="summaryHeadline">Attendance is loading for today.</h2>
+          <p id="summaryNarrative" class="muted">We're pulling attendance, class, and trend data now.</p>
+          <div class="dashboard-legend" id="summaryLegend"></div>
+        </div>
+        <div class="dashboard-visual-panel">
+          <div class="attendance-donut" id="attendanceDonut">
+            <div class="attendance-donut-center">
+              <strong id="attendanceRateValue">--%</strong>
+              <span>attendance rate</span>
+            </div>
+          </div>
+          <div class="dashboard-quick-stats" id="summaryQuickStats"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="metrics-grid" id="summaryMetrics">
+      <div class="metric-card glass-panel">
+        <span class="metric-label">Loading</span>
+        <span class="metric-value">...</span>
+        <span class="metric-footnote">Fetching dashboard data</span>
+      </div>
+    </section>
+
+    <section class="dashboard-layout">
+      <div class="stack">
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Quick Actions</h2>
+            <span class="pill">One click shortcuts</span>
+          </div>
+          <div class="action-grid" id="quickActionGrid"></div>
+        </section>
+
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Alerts & Flags</h2>
+            <span class="pill" id="alertsPill">Needs review</span>
+          </div>
+          <div class="dashboard-alert-grid" id="dashboardAlerts"></div>
+        </section>
+
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Trends & Insights</h2>
+            <span class="pill">Weekly and pattern view</span>
+          </div>
+          <div class="dashboard-trend-grid">
+            <div class="trend-card">
+              <h3>Weekly Attendance Trend</h3>
+              <div class="trend-columns" id="weeklyTrendChart"></div>
+            </div>
+            <div class="trend-card">
+              <h3>Most Absent Classes</h3>
+              <div class="mini-chart" id="absentClassesChart"></div>
+            </div>
+            <div class="trend-card">
+              <h3>Day-of-Week Pattern</h3>
+              <div class="mini-chart" id="weekdayPatternChart"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Class / Period Snapshot</h2>
+            <span class="pill" id="classSnapshotPill">Today's classes</span>
+          </div>
+          <div class="snapshot-list" id="classSnapshotList"></div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Recent Activity Feed</h2>
+            <span class="pill" id="activityPill">Live attendance trail</span>
+          </div>
+          <div class="activity-feed" id="activityFeed"></div>
+        </section>
+
+        <section class="glass-panel panel-section">
+          <div class="panel-title">
+            <h2>Search & Filter</h2>
+            <span class="pill">Fast access</span>
+          </div>
+          <div class="dashboard-search-panel">
+            <div class="list-card">
+              <strong>Current filter scope</strong>
+              <div class="muted" id="filterSummary">All visible attendance data for today.</div>
+            </div>
+            <div class="dashboard-search-actions">
+              <a class="primary-btn dashboard-inline-link" href="/lookup">Search Student by Name / ID</a>
+              <a class="secondary-btn dashboard-inline-link" href="/calendar">Filter by Day Schedule</a>
+              <a class="secondary-btn dashboard-inline-link" href="/analytics">Open Attendance Reports</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-panel panel-section" id="roleFocusPanel">
+          <div class="panel-title">
+            <h2 id="roleFocusTitle">Role Focus</h2>
+            <span class="pill" id="roleFocusPill">Personalized view</span>
+          </div>
+          <div class="split-list" id="roleFocusList"></div>
+        </section>
+      </div>
+    </section>
+  </main>
 </body>
 </html>

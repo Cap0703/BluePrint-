@@ -3,614 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connected Scanners - BluePrint™</title>
+    <title>Connected Scanners - BluePrint</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/navbar.js" defer></script>
-
-    <style>
-        .scanners-header {
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .scanners-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background-color: rgba(255, 255, 255, 0.64);
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .scanners-table thead {
-            background-color: #f8f9fa;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.64);
-        }
-
-        .scanners-table th {
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        .scanners-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.64);
-        }
-
-        .scanners-table tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-edit, .btn-delete, .btn-terminal {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-        }
-
-        .btn-edit {
-            background-color: #3498db;
-            color: white;
-        }
-
-        .btn-edit:hover {
-            background-color: #2980b9;
-        }
-
-        .btn-delete {
-            background-color: #e74c3c;
-            color: white;
-        }
-
-        .btn-delete:hover {
-            background-color: #c0392b;
-        }
-
-        .btn-terminal {
-            background-color: #2ecc71;
-            color: white;
-        }
-
-        .btn-terminal:hover {
-            background-color: #27ae60;
-        }
-
-        .terminal-output {
-            background: radial-gradient(circle at center, #14b1ff, #147dd3, #041d29);
-            color: #f0f0f0;
-            padding: 10px;
-            height: 400px;
-            width: 100%;
-            max-width: 800px;
-            overflow-y: auto;
-            font-family: monospace;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            text-align: left;
-            position: relative;
-        }
-        .terminal-prompt {
-            position: absolute;
-            bottom: 5px;
-            left: 0;
-            width: 100%;
-            display: flex;
-        }
-        .terminal-prompt input {
-            flex: 1;
-        }
-        #terminalLines {
-            padding-bottom: 40px;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            width: 600px;
-            max-width: 90vw;
-            position: relative;
-            max-height: 90vh;
-            overflow-y: auto;
-            margin: auto;
-        }
-
-        #terminalModal .modal-content {
-            background: rgba(4,29,41,0.9);
-            color: #f0f0f0;
-        }
-
-        .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 20px;
-            cursor: pointer;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .form-group input {
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-size: 1rem;
-        }
-
-        .btn-primary {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 6px;
-            background-color: #1f4ed8;
-            color: white;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        #terminalModal .btn-primary {
-            background-color: #3498db;
-        }
-        #terminalModal input {
-            background: #0a1a27;
-            color: #f0f0f0;
-            border: 1px solid #3498db;
-        }
-
-        .btn-primary:hover {
-            background-color: #163bb3;
-        }
-
-        .form-message {
-            margin-top: 10px;
-            font-weight: bold;
-            padding: 10px;
-            border-radius: 4px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #6c757d;
-        }
-    </style>
+    <script src="/js/scanners.js" defer></script>
 </head>
 <body>
     <div id="navbar"></div>
-
-    <div class="scanners-container">
-        <h1>Connected Scanners</h1>
-
-        <div class="scanners-card">
-
-            <div class="scanners-header">
-                <h2>Manage Scanners</h2>
-                <button id="openScannerModal" class="btn-primary">
-                    <i class="fas fa-plus"></i> Add Scanner
-                </button>
+    <main class="page-shell management-shell">
+        <section class="page-header">
+            <div>
+                <h1>Connected Scanners</h1>
+                <p class="page-subtitle">Manage scanner devices, review sync health, and open a live terminal when a scanner needs attention.</p>
             </div>
-
-            <div id="scannersListContainer" class="loading">
-                <i class="fas fa-spinner fa-spin"></i> Loading scanners...
+            <div class="management-toolbar">
+                <button id="openScannerModal" class="primary-btn"><i class="fas fa-plus"></i> Add Scanner</button>
             </div>
-            <div id="scannerModal" class="modal">
-                <div class="modal-content">
-                    <span class="close-btn" id="closeScannerModal">&times;</span>
-                    <h2 id="modalTitle">Add Scanner</h2>
-                    <form id="addScannerForm">
-                        <div class="form-group">
-                            <label>Scanner ID</label>
-                            <input type="text" id="scanner_id" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Location</label>
-                            <input type="text" id="scanner_location" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Password</label>
-                            <input type="password" id="scanner_password" required>
-                        </div>
-                        <button type="submit" class="btn-primary" id="submitBtn">
-                            <i class="fas fa-save"></i> Create Scanner
-                        </button>
-                        <p id="scannerMessage" class="form-message"></p>
-                    </form>
+        </section>
+
+        <section class="metrics-grid" id="scannerMetrics"></section>
+
+        <section class="management-grid">
+            <section class="glass-panel management-card">
+                <div class="panel-title">
+                    <h2>Scanner Fleet</h2>
+                    <span class="pill" id="scannerFleetPill">Loading scanners...</span>
                 </div>
-            </div>
-            <div id="terminalModal" class="modal">
-                <div class="modal-content">
-                    <span class="close-btn" id="closeTerminalModal">&times;</span>
-                    <h2>Scanner Terminal <span id="modeIndicator" style="font-size:1.2rem; vertical-align:middle;"></span></h2>
-                    <div id="terminalOutput" class="terminal-output">
-                        <div id="terminalLines"></div>
-                        <div id="terminalPrompt" class="terminal-prompt">
-                            <input type="text" id="terminalInput" placeholder="Enter command" autocomplete="off">
-                        </div>
+                <div id="scannersListContainer" class="loading-state-panel">Loading scanners...</div>
+            </section>
+
+            <section class="glass-panel management-card">
+                <div class="panel-title">
+                    <h2>Terminal Notes</h2>
+                    <span class="pill">Mode-aware controls</span>
+                </div>
+                <div class="split-list">
+                    <div class="list-card">
+                        <strong>Scanner mode</strong>
+                        <div class="muted">Use this for normal command entry and QR/scanner workflows.</div>
                     </div>
+                    <div class="list-card">
+                        <strong>Enroll mode</strong>
+                        <div class="muted">After switching modes, the terminal prompt stays active so you can type enrollment values directly.</div>
+                    </div>
+                    <div class="list-card">
+                        <strong>Live output</strong>
+                        <div class="muted">The terminal now reads incremental output instead of replaying stale scanner responses.</div>
+                    </div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div id="scannerModal" class="modal surface-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeScannerModal">&times;</span>
+            <div class="panel-title">
+                <h2 id="scannerModalTitle">Add Scanner</h2>
+            </div>
+            <p class="management-copy">Register a scanner device and assign it to the location where attendance should be recorded.</p>
+            <form id="scannerForm" class="management-form">
+                <div class="form-group">
+                    <label for="scanner_id">Scanner ID</label>
+                    <input type="text" id="scanner_id" required>
+                </div>
+                <div class="form-group">
+                    <label for="scanner_location">Location</label>
+                    <input type="text" id="scanner_location" required>
+                </div>
+                <div class="form-group">
+                    <label for="scanner_password">Password</label>
+                    <input type="password" id="scanner_password" required>
+                </div>
+                <div class="button-row">
+                    <button type="submit" class="primary-btn" id="scannerSubmitBtn"><i class="fas fa-save"></i> Create Scanner</button>
+                </div>
+                <p id="scannerMessage" class="management-message"></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="terminalModal" class="modal terminal-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeTerminalModal">&times;</span>
+            <div class="terminal-shell">
+                <div class="terminal-toolbar">
+                    <div>
+                        <h2 id="terminalTitle">Scanner Terminal</h2>
+                        <p class="management-copy" id="terminalSubtitle">Opening scanner session...</p>
+                    </div>
+                    <div class="terminal-status">
+                        <span class="mode-chip scanner" id="modeIndicator"><i class="fas fa-qrcode"></i> Scanner Mode</span>
+                        <span class="pill" id="scannerHeartbeatPill">Waiting for scanner</span>
+                    </div>
+                </div>
+
+                <div class="terminal-stream" id="terminalLines"></div>
+
+                <div class="terminal-controls">
+                    <div class="terminal-mode-actions">
+                        <button type="button" class="soft-button" id="scannerModeBtn"><i class="fas fa-qrcode"></i> Switch to Scanner Mode</button>
+                        <button type="button" class="soft-button" id="enrollModeBtn"><i class="fas fa-user-plus"></i> Switch to Enroll Mode</button>
+                        <button type="button" class="soft-button" id="refreshTerminalBtn"><i class="fas fa-rotate"></i> Refresh Status</button>
+                    </div>
+                    <div class="terminal-input-row">
+                        <input type="text" id="terminalInput" placeholder="Enter scanner command" autocomplete="off">
+                        <button type="button" class="primary-btn" id="sendTerminalBtn">Send</button>
+                    </div>
+                    <div class="terminal-hint" id="terminalHint">Scanner mode accepts standard commands. Switch to enroll mode to type student enrollment input directly.</div>
                 </div>
             </div>
         </div>
     </div>
-    <script>
-        let currentEditingId = null;
-        const modal = document.getElementById('scannerModal');
-        const openBtn = document.getElementById('openScannerModal');
-        const closeBtn = document.getElementById('closeScannerModal');
-        const form = document.getElementById('addScannerForm');
-        const messageEl = document.getElementById('scannerMessage');
-        const modalTitle = document.getElementById('modalTitle');
-        const submitBtn = document.getElementById('submitBtn');
-        document.addEventListener('DOMContentLoaded', loadScanners);
-        openBtn.addEventListener('click', () => {
-            currentEditingId = null;
-            form.reset();
-            modalTitle.textContent = 'Add Scanner';
-            submitBtn.innerHTML = '<i class="fas fa-save"></i> Create Scanner';
-            messageEl.textContent = '';
-            modal.style.display = "flex";
-        });
-        closeBtn.addEventListener('click', () => {
-            modal.style.display = "none";
-        });
-        window.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.style.display = "none";
-            }
-        });
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const SCANNER_ID = document.getElementById('scanner_id').value;
-            const SCANNER_LOCATION = document.getElementById('scanner_location').value;
-            const SCANNER_PASSWORD = document.getElementById('scanner_password').value;
-            messageEl.textContent = currentEditingId ? "Updating scanner..." : "Creating scanner...";
-            messageEl.style.color = "black";
-            try {
-                const token = localStorage.getItem('auth_token');
-                const url = currentEditingId ? `/api/scanners/${currentEditingId}` : '/api/scanners';
-                const method = currentEditingId ? 'PUT' : 'POST';
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ 
-                        SCANNER_ID: SCANNER_ID, 
-                        SCANNER_LOCATION: SCANNER_LOCATION, 
-                        SCANNER_PASSWORD: SCANNER_PASSWORD 
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    messageEl.textContent = data.error || "Error";
-                    messageEl.style.color = "red";
-                    return;
-                }
-                messageEl.textContent = currentEditingId ? "Scanner updated successfully!" : "Scanner created successfully!";
-                messageEl.style.color = "green";
-                form.reset();
-                setTimeout(() => {
-                    modal.style.display = "none";
-                    messageEl.textContent = "";
-                    loadScanners();
-                }, 1000);
-            } catch (err) {
-                console.error(err);
-                messageEl.textContent = "Server error";
-                messageEl.style.color = "red";
-            }
-        });
-
-        async function loadScanners() {
-            const container = document.getElementById('scannersListContainer');
-            try {
-                const token = localStorage.getItem('auth_token');
-                const response = await fetch('/api/scanners', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!response.ok) {
-                    throw new Error('Failed to load scanners');
-                }
-                const scanners = await response.json();
-                if (scanners.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <i class="fas fa-wifi"></i>
-                            <h3>No Scanners Connected</h3>
-                            <p>Click "Add Scanner" to register a new scanner device.</p>
-                        </div>
-                    `;
-                    return;
-                }
-                let tableHTML = `
-                    <table class="scanners-table">
-                        <thead>
-                            <tr>
-                                <th>Scanner ID</th>
-                                <th>Location</th>
-                                <th>Status</th>
-                                <th>Last Sync</th>
-                                <th>Battery</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                scanners.forEach(scanner => {
-                    const status = scanner.scanner_status || 'Offline';
-                    const lastSync = scanner.last_sync || 'Never';
-                    const battery = scanner.battery_level || 'N/A';
-                    tableHTML += `
-                        <tr>
-                            <td>${scanner.scanner_id}</td>
-                            <td>${scanner.scanner_location}</td>
-                            <td><span style="color: ${status === 'Online' ? '#27ae60' : '#e74c3c'}; font-weight: bold;">${status}</span></td>
-                            <td>${lastSync}</td>
-                            <td>${battery}</td>
-                            <td>
-                                <div class="action-buttons">
-                                    <button class="btn-edit" onclick="editScanner(${scanner.id}, '${scanner.scanner_id}', '${scanner.scanner_location}')">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                    <button class="btn-terminal" onclick="openTerminal(${scanner.id})">
-                                        <i class="fas fa-terminal"></i> Terminal
-                                    </button>
-                                    <button class="btn-delete" onclick="deleteScanner(${scanner.id}, '${scanner.scanner_id}')">
-                                        <i class="fas fa-trash"></i> Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-                tableHTML += `
-                        </tbody>
-                    </table>
-                `;
-                container.innerHTML = tableHTML;
-            } catch (err) {
-                console.error('Error loading scanners:', err);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <h3>Error Loading Scanners</h3>
-                        <p>Please try refreshing the page or contact support.</p>
-                    </div>
-                `;
-            }
-        }
-
-        function editScanner(id, scannerId, location) {
-            currentEditingId = id;
-            document.getElementById('scanner_id').value = scannerId;
-            document.getElementById('scanner_location').value = location;
-            document.getElementById('scanner_password').value = '';
-            modalTitle.textContent = 'Edit Scanner';
-            submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Scanner';
-            messageEl.textContent = '';
-            modal.style.display = "flex";
-        }
-
-        async function deleteScanner(id, scannerId) {
-            if (!confirm(`Are you sure you want to delete scanner "${scannerId}"? This action cannot be undone.`)) {
-                return;
-            }
-            try {
-                const token = localStorage.getItem('auth_token');
-                const response = await fetch(`/api/scanners/${id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!response.ok) {
-                    alert('Failed to delete scanner');
-                    return;
-                }
-                loadScanners();
-            } catch (err) {
-                console.error('Error deleting scanner:', err);
-                alert('Error deleting scanner');
-            }
-        }
-
-        let terminalScannerId = null;
-        const terminalModal = document.getElementById('terminalModal');
-        const terminalCloseBtn = document.getElementById('closeTerminalModal');
-        const terminalOutput = document.getElementById('terminalLines');
-        const terminalInput = document.getElementById('terminalInput');
-
-        function openTerminal(id) {
-            terminalScannerId = id;
-            terminalOutput.innerHTML = '';
-            terminalInput.value = '';
-            terminalModal.style.display = 'flex';
-            terminalInput.focus();
-            const art = `
-██████╗ ██╗     ██╗   ██╗███████╗██████╗ ██████╗ ██╗███╗   ██╗████████╗
-██╔══██╗██║     ██║   ██║██╔════╝██╔══██╗██╔══██╗██║████╗  ██║╚══██╔══╝
-██████╔╝██║     ██║   ██║█████╗  ██████╔╝██████╔╝██║██╔██╗ ██║   ██║   
-██╔══██╗██║     ██║   ██║██╔══╝  ██╔═══╝ ██╔══██╗██║██║╚██╗██║   ██║   
-██████╔╝███████╗╚██████╔╝███████╗██║     ██║  ██║██║██║ ╚████║   ██║   
-╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝╚═╝     ╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝   ╚═╝   
-`;
-            appendOutput(art, true);
-            fetch(`/api/scanners/${id}/terminal`, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-            }).then(r => r.json()).then(data => {
-                updateModeIndicator(data.mode);
-            }).catch(() => {});
-        }
-
-        function closeTerminal() {
-            terminalModal.style.display = 'none';
-            terminalScannerId = null;
-        }
-
-        terminalCloseBtn.addEventListener('click', closeTerminal);
-        window.addEventListener('click', (e) => {
-            if (e.target === terminalModal) closeTerminal();
-        });
-
-        function appendOutput(text, centered = false) {
-            if (centered) {
-                const pre = document.createElement('pre');
-                pre.style.textAlign = 'center';
-                pre.style.margin = '0';
-                pre.style.whiteSpace = 'pre';
-                pre.textContent = text;
-                terminalOutput.appendChild(pre);
-            } else {
-                const lines = text.split('\n');
-                lines.forEach(line => {
-                    const div = document.createElement('div');
-                    if (centered) div.style.textAlign = 'center';
-                    div.textContent = line;
-                    terminalOutput.appendChild(div);
-                });
-            }
-            terminalOutput.scrollTop = terminalOutput.scrollHeight;
-        }
-
-        function updateModeIndicator(mode) {
-            const iconEl = document.getElementById('modeIndicator');
-            if (!iconEl) return;
-            let iconHtml = '';
-            switch (mode) {
-                case 'enroll':
-                    iconHtml = '<i class="fas fa-user-plus"></i>';
-                    break;
-                default:
-                    iconHtml = '<i class="fas fa-qrcode"></i>';
-            }
-            iconEl.innerHTML = iconHtml;
-        }
-
-        async function sendTerminalCommand(cmd) {
-            if (!terminalScannerId) return;
-            try {
-                const token = localStorage.getItem('auth_token');
-                const resp = await fetch(`/api/scanners/${terminalScannerId}/terminal`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ command: cmd })
-                });
-                const data = await resp.json();
-                
-                if (!resp.ok) {
-                    appendOutput(`ERROR: ${data.error || 'unknown'}`);
-                    return;
-                }
-                
-                showWaitingSpinner();
-                
-                let attempts = 0;
-                const maxAttempts = 30;
-                const pollInterval = setInterval(async () => {
-                    attempts++;
-                    try {
-                        const outputResp = await fetch(`/api/scanners/${terminalScannerId}/terminal/output`, {
-                            method: 'GET',
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const outputData = await outputResp.json();
-                        if (outputData.output && outputData.output.trim() !== '') {
-                            clearInterval(pollInterval);
-                            if (waitingLine) {
-                                waitingLine.remove();
-                                waitingLine = null;
-                            }
-                            appendOutput(outputData.output);
-                        } else if (attempts >= maxAttempts) {
-                            clearInterval(pollInterval);
-                            if (waitingLine) {
-                                waitingLine.remove();
-                                waitingLine = null;
-                            }
-                            appendOutput('⚠️ Command timeout - no response from scanner');
-                        }
-                    } catch (err) {
-                        console.error('Poll error:', err);
-                    }
-                }, 1000);
-            } catch (err) {
-                console.error('Terminal send error', err);
-                appendOutput('Server error');
-            }
-        }
-
-        terminalInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const cmd = terminalInput.value.trim();
-                if (cmd === '') return;
-                appendOutput(`> ${cmd}`);
-                sendTerminalCommand(cmd);
-                terminalInput.value = '';
-                terminalInput.focus();
-            }
-        });
-        let waitingLine;
-
-        function showWaitingSpinner() {
-            const div = document.createElement('div');
-            div.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for scanner response...';
-            terminalOutput.appendChild(div);
-            waitingLine = div;
-        }
-    </script>
 </body>
 </html>

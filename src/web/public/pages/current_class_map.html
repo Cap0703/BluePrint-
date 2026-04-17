@@ -6,175 +6,53 @@
         <title>Current Class Map - BluePrint™</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="/css/style.css">
-        <script src="/js/navbar.js"></script>
-        <script src="/js/map.js"></script>
+        <script src="/js/navbar.js" defer></script>
+        <script src="/js/map.js" defer></script>
     </head>
-    <style>
-.map-builder{
-    margin-top:40px;
-}
-
-.map-toolbar{
-    margin-bottom:10px;
-}
-
-#mapCanvas{
-    width:1000%;
-    height:900px;
-    background:#f3f3f3;
-    border:2px solid #ccc;
-    position:relative;
-    overflow:hidden;
-}
-
-.room{
-    position:absolute;
-    border:2px solid #1f4ed8;
-    background:rgba(31,78,216,0.1);
-    color: black;
-    border-radius:6px;
-    padding:5px;
-    cursor:move;
-}
-
-.room-header{
-    font-weight:bold;
-    font-size:12px;
-}
-
-.scanner-dot{
-    width:20px;
-    height:20px;
-    background:#e74c3c;
-    border-radius:50%;
-    position:absolute;
-    cursor:grab;
-}
-
-.scanner-dot:hover{
-    transform:scale(1.2);
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    margin: 5px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 15px;
-    font-size: 9px;
-}
-
-#currentMapLayer {
-    background-color: #94989c;
-    border-color: #6c757d;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    margin: 5px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 15px;
-    font-size: 9px;
-}
-
-#mapMenuToggle{
-    position:absolute;
-    top:10px;
-    left:10px;
-    width:40px;
-    height:40px;
-    background:#1f4ed8;
-    color:white;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-radius:6px;
-    cursor:pointer;
-    z-index:999;
-}
-
-#mapMenu{
-    position:absolute;
-    top:60px;
-    left:10px;
-    width:200px;
-    background:white;
-    border:2px solid #ccc;
-    padding:10px;
-    border-radius:6px;
-    display:none;
-    flex-direction:column;
-    gap:8px;
-    z-index:999;
-}
-
-#mapMenu input{
-    width:100%;
-    padding:5px;
-}
-
-#mapMenu button{
-    padding:6px;
-    cursor:pointer;
-}
-
-#rightControls{
-    position: absolute;
-    right: 10px;
-    bottom: 20px;
-    
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-
-    z-index: 1000;
-}
-    </style>
     <body>
         <div id="navbar"></div>
-        <div class="map-container">
-            <h1>Current Class Map</h1>
-            <div class="map-card">
-                    <div id="mapCanvas">
-                        <div id="mapMenuToggle">
-                            <i class="fas fa-bars"></i>
-                        </div>
-                        <div id="mapMenu">
-                            <h3>Map Tools</h3>
-                            <input type="text" id="roomName" placeholder="Room name">
-                            <button onclick="createRoom(
-                                document.getElementById('roomName').value,
-                                parseInt(document.getElementById('currentMapLayer').dataset.z) || 0
-                            )">
-                                Add Room
-                            </button>
-                            <button onclick="saveMap()">Save Map</button>
-                            <button onclick="toggleDeleteMode()" id="deleteModeBtn">
-                                Delete Mode
-                            </button>
-                        </div>
-                        <div id="rightControls">
-                            <button onclick="upLayer()" class="btn-secondary">
-                                <i class="fas fa-arrow-up"></i>
-                            </button>
-                            <div id="currentMapLayer"></div>
-                            <button onclick="downLayer()" class="btn-secondary">
-                                <i class="fas fa-arrow-down"></i>
-                            </button>
-                        </div>
-                    </div>
+        <main class="page-shell">
+            <section class="page-header">
+                <div>
+                    <h1>Current Class Map</h1>
+                    <p class="page-subtitle">Manage the campus layout, place rooms and scanners, and review which rooms are seeing activity today.</p>
                 </div>
-            </div>
-        </div>
+            </section>
+            <section class="metrics-grid" id="mapMetrics"></section>
+            <section class="map-layout">
+                <aside class="map-sidebar glass-panel">
+                    <div class="panel-title">
+                        <h2>Map Tools</h2>
+                    </div>
+                    <div class="toolbar" style="display:grid;">
+                        <input type="text" id="roomName" placeholder="Room name">
+                        <button id="addRoomButton" class="primary-btn">Add Room</button>
+                        <button id="saveMapButton" class="secondary-btn">Save Map</button>
+                        <button id="deleteModeBtn" class="danger-btn">Delete Mode</button>
+                    </div>
+                    <div class="label-value">
+                        <span>Current Layer</span>
+                        <span id="currentMapLayer" data-z="0">0</span>
+                    </div>
+                    <div class="quick-actions">
+                        <button id="upLayerButton" class="secondary-btn"><i class="fas fa-arrow-up"></i> Up</button>
+                        <button id="downLayerButton" class="secondary-btn"><i class="fas fa-arrow-down"></i> Down</button>
+                    </div>
+                    <div class="panel-title" style="margin-top: 1.5rem;">
+                        <h3>Rooms</h3>
+                    </div>
+                    <div class="map-room-list" id="mapRoomList"></div>
+                    <div class="panel-title" style="margin-top: 1.5rem;">
+                        <h3>Selected Room</h3>
+                    </div>
+                    <div class="activity-feed" id="selectedRoomDetails">
+                        <div class="empty-state" style="padding: 1rem;">Select a room to inspect its activity.</div>
+                    </div>
+                </aside>
+                <div class="map-card">
+                    <div id="mapCanvas"></div>
+                </div>
+            </section>
+        </main>
     </body>
 </html>

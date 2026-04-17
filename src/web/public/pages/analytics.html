@@ -6,16 +6,72 @@
         <title>Analytics - BluePrint™</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="/css/style.css">
-        <script src="/js/navbar.js"></script>
+        <script src="/js/navbar.js" defer></script>
         <script src="/js/analytics.js" defer></script>
     </head>
     <body>
         <div id="navbar"></div>
-        <div class="analytics-container">
-            <h1>Analytics</h1>
-            <div class = "analytics-card" id="analytics-card">
-
-            </div>
-        </div>
+        <main class="page-shell">
+            <section class="page-header">
+                <div>
+                    <h1>Attendance Analytics</h1>
+                    <p class="page-subtitle">Track scan volume, room traffic, student activity, and period trends from the same live attendance data used across BluePrint.</p>
+                </div>
+                <div class="pill" id="analyticsLastUpdated">Loading data...</div>
+            </section>
+            <section class="metrics-grid" id="analyticsMetrics"></section>
+            <section class="content-grid">
+                <div class="stack">
+                    <div class="analytics-card panel-section">
+                        <div class="panel-title">
+                            <h2>Explore Activity</h2>
+                            <div class="toolbar">
+                                <input type="search" id="analyticsSearch" placeholder="Search student, room, or period">
+                                <select id="analyticsPeriodFilter">
+                                    <option value="">All periods</option>
+                                </select>
+                                <select id="analyticsLocationFilter">
+                                    <option value="">All rooms</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-shell">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Student ID</th>
+                                        <th>Room</th>
+                                        <th>Period</th>
+                                        <th>Total Scans</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analyticsTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="stack">
+                    <div class="analytics-card panel-section">
+                        <div class="panel-title">
+                            <h3>Top Rooms</h3>
+                        </div>
+                        <div class="mini-chart" id="topRoomsChart"></div>
+                    </div>
+                    <div class="analytics-card panel-section">
+                        <div class="panel-title">
+                            <h3>Top Periods</h3>
+                        </div>
+                        <div class="mini-chart" id="topPeriodsChart"></div>
+                    </div>
+                    <div class="analytics-card panel-section">
+                        <div class="panel-title">
+                            <h3>Most Active Students</h3>
+                        </div>
+                        <div class="split-list" id="topStudentsList"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </body>
 </html>

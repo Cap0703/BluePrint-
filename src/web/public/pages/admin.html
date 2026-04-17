@@ -3,307 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - BluePrint™</title>
+    <title>Admin - BluePrint</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/navbar.js" defer></script>
-    
-    <style>
-        .admin-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .admin-card {
-            background: rgba(255, 255, 255, 0.64);
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .form-group input, .form-group select {
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-
-        .btn-primary {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 6px;
-            background-color: #1f4ed8;
-            color: white;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        .btn-primary:hover {
-            background-color: #163bb3;
-        }
-
-        .form-message {
-            margin-top: 10px;
-            font-weight: bold;
-            padding: 10px;
-            border-radius: 4px;
-        }
-
-        .users-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .users-table thead {
-            background-color: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .users-table th {
-            padding: 12px 15px;
-            text-align: left;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        .users-table td {
-            padding: 10px 15px;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .users-table tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .role-badge {
-            padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
-        .role-badge.admin {
-            background-color: #e74c3c;
-            color: white;
-        }
-
-        .role-badge.teacher {
-            background-color: #3498db;
-            color: white;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-edit, .btn-delete {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-        }
-
-        .btn-edit {
-            background-color: #3498db;
-            color: white;
-        }
-
-        .btn-edit:hover {
-            background-color: #2980b9;
-        }
-
-        .btn-delete {
-            background-color: #e74c3c;
-            color: white;
-        }
-
-        .btn-delete:hover {
-            background-color: #c0392b;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            width: 400px;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-
-        .close-btn {
-            font-size: 24px;
-            cursor: pointer;
-            float: right;
-            line-height: 20px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #6c757d;
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #6c757d;
-        }
-
-        h3 {
-            margin-top: 0;
-        }
-
-        h2 {
-            color:#ffffff;
-        }
-
-        @media (max-width: 1200px) {
-            .admin-container {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
 </head>
 <body>
     <div id="navbar"></div>
-    <div class="admin-container">
-        <div class="admin-card">
-            <h2>Add User</h2>
-            <form id="addUserForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="user_email" required>
-                </div>
-                <div class="form-group">
-                    <label>First Name</label>
-                    <input type="text" id="user_first_name" required>
-                </div>
-                <div class="form-group">
-                    <label>Last Name</label>
-                    <input type="text" id="user_last_name" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="user_password" required>
-                </div>
-                <div class="form-group">
-                    <label>Role</label>
-                    <select id="user_role" required>
-                        <option value="">Select a role...</option>
-                        <option value="teacher">Teacher</option>
-                        <option value="administrator">Administrator</option>
-                    </select>
-                </div>
-                <div class="form-group" id="coursesGroup" style="display: none;">
-                    <label>Assign Courses</label>
-                    <div id="coursesList" style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
-                        <p style="color: #999;">Loading courses...</p>
+    <main class="page-shell management-shell">
+        <section class="page-header">
+            <div>
+                <h1>Admin Center</h1>
+                <p class="page-subtitle">Manage users, course assignments, and attendance system settings from a unified operations page.</p>
+            </div>
+        </section>
+
+        <section class="management-grid">
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Add User</h2></div>
+                <form id="addUserForm" class="management-form">
+                    <div class="form-group"><label>Email</label><input type="email" id="user_email" required></div>
+                    <div class="form-group"><label>First Name</label><input type="text" id="user_first_name" required></div>
+                    <div class="form-group"><label>Last Name</label><input type="text" id="user_last_name" required></div>
+                    <div class="form-group"><label>Password</label><input type="password" id="user_password" required></div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="user_role" required>
+                            <option value="">Select a role...</option>
+                            <option value="teacher">Teacher</option>
+                            <option value="administrator">Administrator</option>
+                        </select>
                     </div>
-                </div>
-                <button type="submit" class="btn-primary">
-                    <i class="fas fa-user-plus"></i> Create User
-                </button>
-                <p id="userMessage" class="form-message"></p>
-            </form>
-        </div>
-        <div class="admin-card">
-            <h2>Users</h2>
-            <div id="usersListContainer" class="loading">
-                <i class="fas fa-spinner fa-spin"></i> Loading users...
-            </div>
-        </div>
-    </div>
-    <div class="admin-container">
-        <div class="admin-card">
-            <h2>Add Course</h2>
-            <form id="addCourseForm">
-                <div class="form-group">
-                    <label>Room Number</label>
-                    <input type="text" id="course_room" placeholder="e.g., 101, A202" required>
-                </div>
-                <div class="form-group">
-                    <label>Period</label>
-                    <select id="course_period" required>
-                        <option value="">Select a period...</option>
-                        <option value="Period 1">Period 1</option>
-                        <option value="Period 2">Period 2</option>
-                        <option value="Period 3">Period 3</option>
-                        <option value="Period 4">Period 4</option>
-                        <option value="Period 5">Period 5</option>
-                        <option value="Period 6">Period 6</option>
-                        <option value="Period 7">Period 7</option>
-                        <option value="Academic Support">Academic Support</option>
-                        <option value="School Wide Mass">School Wide Mass</option>
-                        <option value="Faith Family">Faith Family</option>
-                        <option value="Club">Club</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn-primary">
-                    <i class="fas fa-plus"></i> Add Course
-                </button>
-                <p id="courseMessage" class="form-message"></p>
-            </form>
-        </div>
-        <div class="admin-card">
-            <h2>Courses</h2>
-            <div id="coursesListContainer" class="loading">
-                <i class="fas fa-spinner fa-spin"></i> Loading courses...
-            </div>
-        </div>
-    </div>
-    <div id="editUserModal" class="modal">
+                    <div class="form-group" id="coursesGroup" style="display:none;">
+                        <label>Assign Courses</label>
+                        <div id="coursesList" class="management-checklist"><p class="muted">Loading courses...</p></div>
+                    </div>
+                    <div class="button-row"><button type="submit" class="primary-btn"><i class="fas fa-user-plus"></i> Create User</button></div>
+                    <p id="userMessage" class="management-message"></p>
+                </form>
+            </section>
+
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Users</h2><span class="pill">Accounts</span></div>
+                <div id="usersListContainer" class="loading-state-panel">Loading users...</div>
+            </section>
+        </section>
+
+        <section class="management-grid">
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Add Course</h2></div>
+                <form id="addCourseForm" class="management-form">
+                    <div class="form-group"><label>Room Number</label><input type="text" id="course_room" placeholder="e.g., 101, A202" required></div>
+                    <div class="form-group">
+                        <label>Period</label>
+                        <select id="course_period" required>
+                            <option value="">Select a period...</option>
+                            <option value="Period 1">Period 1</option>
+                            <option value="Period 2">Period 2</option>
+                            <option value="Period 3">Period 3</option>
+                            <option value="Period 4">Period 4</option>
+                            <option value="Period 5">Period 5</option>
+                            <option value="Period 6">Period 6</option>
+                            <option value="Period 7">Period 7</option>
+                            <option value="Academic Support">Academic Support</option>
+                            <option value="School Wide Mass">School Wide Mass</option>
+                            <option value="Faith Family">Faith Family</option>
+                            <option value="Club">Club</option>
+                        </select>
+                    </div>
+                    <div class="button-row"><button type="submit" class="primary-btn"><i class="fas fa-plus"></i> Add Course</button></div>
+                    <p id="courseMessage" class="management-message"></p>
+                </form>
+            </section>
+
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Courses</h2><span class="pill">Assignments</span></div>
+                <div id="coursesListContainer" class="loading-state-panel">Loading courses...</div>
+            </section>
+        </section>
+
+        <section class="management-grid">
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>System Settings</h2></div>
+                <form class="management-form" onsubmit="return false;">
+                    <div class="form-group">
+                        <label for="gracePeriod">Attendance Grace Period (minutes)</label>
+                        <input type="number" id="gracePeriod" min="0" value="10">
+                    </div>
+                    <div class="button-row"><button id="updateSettingsBtn" class="primary-btn">Update Settings</button></div>
+                    <p id="settingsMessage" class="management-message"></p>
+                </form>
+            </section>
+        </section>
+    </main>
+
+    <div id="editUserModal" class="modal surface-modal">
         <div class="modal-content">
             <span class="close-btn" id="closeEditUserModal">&times;</span>
-            <h3>Edit User</h3>
-            <form id="editUserForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="edit_user_email" required>
-                </div>
-                <div class="form-group">
-                    <label>First Name</label>
-                    <input type="text" id="edit_user_first_name" required>
-                </div>
-                <div class="form-group">
-                    <label>Last Name</label>
-                    <input type="text" id="edit_user_last_name" required>
-                </div>
+            <div class="panel-title"><h2>Edit User</h2></div>
+            <form id="editUserForm" class="management-form">
+                <div class="form-group"><label>Email</label><input type="email" id="edit_user_email" required></div>
+                <div class="form-group"><label>First Name</label><input type="text" id="edit_user_first_name" required></div>
+                <div class="form-group"><label>Last Name</label><input type="text" id="edit_user_last_name" required></div>
                 <div class="form-group">
                     <label>Role</label>
                     <select id="edit_user_role" required>
@@ -312,20 +113,13 @@
                         <option value="administrator">Administrator</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>New Password (leave blank to keep current)</label>
-                    <input type="password" id="edit_user_password">
-                </div>
-                <div class="form-group" id="editCoursesGroup" style="display: none;">
+                <div class="form-group"><label>New Password (leave blank to keep current)</label><input type="password" id="edit_user_password"></div>
+                <div class="form-group" id="editCoursesGroup" style="display:none;">
                     <label>Assign Courses</label>
-                    <div id="editCoursesList" style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
-                        <p style="color: #999;">Loading courses...</p>
-                    </div>
+                    <div id="editCoursesList" class="management-checklist"><p class="muted">Loading courses...</p></div>
                 </div>
-                <button type="submit" class="btn-primary">
-                    <i class="fas fa-save"></i> Update User
-                </button>
-                <p id="editUserMessage" class="form-message"></p>
+                <div class="button-row"><button type="submit" class="primary-btn"><i class="fas fa-save"></i> Update User</button></div>
+                <p id="editUserMessage" class="management-message"></p>
             </form>
         </div>
     </div>
@@ -336,6 +130,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await loadCourses();
             await loadUsers();
+            await loadSettings();
             setupCourseForm();
             setupRoleToggle();
         });
@@ -355,14 +150,14 @@
         function populateCoursesCheckboxes(containerId) {
             const container = document.getElementById(containerId);
             if (allCourses.length === 0) {
-                container.innerHTML = '<p style=\"color: #999;\">No courses available</p>';
+                container.innerHTML = '<p class="muted">No courses available</p>';
                 return;
             }
             container.innerHTML = allCourses.map(course => `
-                <div style=\"margin-bottom: 8px;\">
-                    <input type=\"checkbox\" value=\"${course.id}\" class=\"course-checkbox\">
-                    <label style=\"display: inline; margin-left: 5px; font-weight: normal;\">Room ${course.room} - ${course.period}</label>
-                </div>
+                <label class="management-checklist-item">
+                    <input type="checkbox" value="${course.id}" class="course-checkbox">
+                    <span>Room ${course.room} - ${course.period}</span>
+                </label>
             `).join('');
         }
         
@@ -375,7 +170,6 @@
                 const period = document.getElementById('course_period').value;
                 const messageEl = document.getElementById('courseMessage');
                 messageEl.textContent = 'Adding course...';
-                messageEl.style.color = 'black';
                 try {
                     const response = await fetch('/api/courses', {
                         method: 'POST',
@@ -388,11 +182,9 @@
                     const data = await response.json();
                     if (!response.ok) {
                         messageEl.textContent = data.error || 'Error adding course';
-                        messageEl.style.color = 'red';
                         return;
                     }
                     messageEl.textContent = 'Course added successfully!';
-                    messageEl.style.color = 'green';
                     document.getElementById('addCourseForm').reset();
                     setTimeout(() => {
                         loadCourses();
@@ -401,7 +193,6 @@
                 } catch (err) {
                     console.error(err);
                     messageEl.textContent = 'Server error';
-                    messageEl.style.color = 'red';
                 }
             });
         }
@@ -420,17 +211,12 @@
                 }
                 allCourses = await response.json();
                 if (allCourses.length === 0) {
-                    container.innerHTML = `
-                        <div class=\"empty-state\">
-                            <i class=\"fas fa-book\"></i>
-                            <h3>No Courses</h3>
-                            <p>Add a course using the form on the left.</p>
-                        </div>
-                    `;
+                    container.innerHTML = `<div class="empty-state"><h3>No Courses</h3><p>Add a course using the form on the left.</p></div>`;
                     return;
                 }
                 let tableHTML = `
-                    <table class=\"users-table\">
+                    <div class="management-table-shell">
+                    <table class="management-table">
                         <thead>
                             <tr>
                                 <th>Room</th>
@@ -445,26 +231,15 @@
                         <tr>
                             <td>${course.room}</td>
                             <td>${course.period}</td>
-                            <td>
-                                <div class=\"action-buttons\">
-                                    <button class=\"btn-delete\" onclick=\"deleteCourse(${course.id})\">
-                                        <i class=\"fas fa-trash\"></i> Delete
-                                    </button>
-                                </div>
-                            </td>
+                            <td><div class="management-action-row"><button class="danger-button" onclick="deleteCourse(${course.id})">Delete</button></div></td>
                         </tr>
                     `;
                 });
-                tableHTML += `</tbody></table>`;
+                tableHTML += `</tbody></table></div>`;
                 container.innerHTML = tableHTML;
             } catch (err) {
                 console.error('Error loading courses:', err);
-                container.innerHTML = `
-                    <div class=\"empty-state\">
-                        <i class=\"fas fa-exclamation-circle\"></i>
-                        <h3>Error Loading Courses</h3>
-                    </div>
-                `;
+                container.innerHTML = `<div class="empty-state"><h3>Error Loading Courses</h3></div>`;
             }
         }
         
@@ -498,7 +273,6 @@
             const role = document.getElementById('user_role').value;
             const messageEl = document.getElementById('userMessage');
             messageEl.textContent = "Creating user...";
-            messageEl.style.color = "black";
             let courses = [];
             if (role === 'teacher') {
                 const checkboxes = document.querySelectorAll('.course-checkbox:checked');
@@ -516,11 +290,9 @@
                 const data = await response.json();
                 if (!response.ok) {
                     messageEl.textContent = data.error || "Error creating user";
-                    messageEl.style.color = "red";
                     return;
                 }
                 messageEl.textContent = "User created successfully!";
-                messageEl.style.color = "green";
                 document.getElementById('addUserForm').reset();
                 setTimeout(() => {
                     loadUsers();
@@ -529,7 +301,6 @@
             } catch (err) {
                 console.error(err);
                 messageEl.textContent = "Server error";
-                messageEl.style.color = "red";
             }
         });
         const editUserModal = document.getElementById('editUserModal');
@@ -561,7 +332,6 @@
             const role = document.getElementById('edit_user_role').value;
             const password = document.getElementById('edit_user_password').value;
             editUserMessage.textContent = "Updating user...";
-            editUserMessage.style.color = "black";
             let courses = [];
             if (role === 'teacher') {
                 const checkboxes = document.querySelectorAll('#editCoursesList .course-checkbox:checked');
@@ -581,11 +351,9 @@
                 const data = await response.json();
                 if (!response.ok) {
                     editUserMessage.textContent = data.error || "Error updating user";
-                    editUserMessage.style.color = "red";
                     return;
                 }
                 editUserMessage.textContent = "User updated successfully!";
-                editUserMessage.style.color = "green";
                 setTimeout(() => {
                     editUserModal.style.display = "none";
                     loadUsers();
@@ -593,7 +361,6 @@
             } catch (err) {
                 console.error(err);
                 editUserMessage.textContent = "Server error";
-                editUserMessage.style.color = "red";
             }
         });
 
@@ -611,17 +378,12 @@
                 }
                 const users = await response.json();
                 if (users.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <i class="fas fa-users"></i>
-                            <h3>No Users</h3>
-                            <p>Add a user using the form on the left.</p>
-                        </div>
-                    `;
+                    container.innerHTML = `<div class="empty-state"><h3>No Users</h3><p>Add a user using the form on the left.</p></div>`;
                     return;
                 }
                 let tableHTML = `
-                    <table class="users-table">
+                    <div class="management-table-shell">
+                    <table class="management-table">
                         <thead>
                             <tr>
                                 <th>Email</th>
@@ -636,7 +398,6 @@
                 `;
                 users.forEach(user => {
                     const created = new Date(user.created_at).toLocaleDateString();
-                    const roleBadgeClass = user.role === 'administrator' ? 'admin' : 'teacher';
                     const courses = user.courses || [];
                     let coursesStr = '';
                     if (courses.length && allCourses.length) {
@@ -651,32 +412,23 @@
                         <tr>
                             <td>${user.email}</td>
                             <td>${user.first_name} ${user.last_name}</td>
-                            <td><span class="role-badge ${roleBadgeClass}">${user.role}</span></td>
+                            <td><span class="status-pill ${user.role === 'administrator' ? 'late' : 'excused'}">${user.role}</span></td>
                             <td>${coursesStr}</td>
                             <td>${created}</td>
                             <td>
-                                <div class="action-buttons">
-                                    <button class="btn-edit" onclick="editUser(${user.id}, '${user.email}', '${user.first_name}', '${user.last_name}', '${user.role}', ${coursesJson})">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                    <button class="btn-delete" onclick="deleteUser(${user.id}, '${user.email}')">
-                                        <i class="fas fa-trash"></i> Delete
-                                    </button>
+                                <div class="management-action-row">
+                                    <button class="soft-button" onclick="editUser(${user.id}, '${user.email}', '${user.first_name}', '${user.last_name}', '${user.role}', ${coursesJson})">Edit</button>
+                                    <button class="danger-button" onclick="deleteUser(${user.id}, '${user.email}')">Delete</button>
                                 </div>
                             </td>
                         </tr>
                     `;
                 });
-                tableHTML += `</tbody></table>`;
+                tableHTML += `</tbody></table></div>`;
                 container.innerHTML = tableHTML;
             } catch (err) {
                 console.error('Error loading users:', err);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <h3>Error Loading Users</h3>
-                    </div>
-                `;
+                container.innerHTML = `<div class="empty-state"><h3>Error Loading Users</h3></div>`;
             }
         }
 
@@ -725,6 +477,45 @@
                 alert('Error deleting user');
             }
         }
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings/grace-period', {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('gracePeriod').value = data.value;
+                }
+            } catch (err) {
+                console.error('Failed to load settings');
+            }
+        }
+
+        document.getElementById('updateSettingsBtn').addEventListener('click', async () => {
+            const value = document.getElementById('gracePeriod').value;
+            const messageEl = document.getElementById('settingsMessage');
+            try {
+                const res = await fetch('/api/settings/grace-period', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ value })
+                });
+                if (res.ok) {
+                    messageEl.textContent = 'Settings updated successfully';
+                } else {
+                    const error = await res.json();
+                    messageEl.textContent = error.error || 'Failed to update';
+                }
+            } catch (err) {
+                messageEl.textContent = 'Server error';
+            }
+        });
     </script>
 </body>
 </html>

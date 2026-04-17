@@ -6,83 +6,53 @@
         <title>Profile - BluePrint™</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="/css/style.css">
-        <script src="/js/navbar.js"></script>
-        <style>
-            .profile-card {
-                padding: 20px;
-                max-width: 800px;
-                margin: 0 auto;
-                background: rgba(7, 96, 148, 0.445);
-                border-radius: 10px;
-                text-align: center;
-            }
-
-        </style>
+        <script src="/js/navbar.js" defer></script>
+        <script src="/js/profile.js" defer></script>
     </head>
     <body>
         <div id="navbar"></div>
-        <div class="profile-container">
-            <h1>User Profile</h1>
-            <div class="profile-card">
-                <i class="fas fa-user-circle fa-5x"></i>
-                <h2 id="profileName">Loading...</h2>
-                <p>Email: <span id="profileEmail"></span></p>
-                <p>Role: <span id="profileRole"></span></p>
-                <p><b>Current Courses:</b> <span id="profileCourses">Not available</span></p>
-            </div>
-        </div>
+        <main class="page-shell">
+            <section class="page-header">
+                <div>
+                    <h1>User Profile</h1>
+                    <p class="page-subtitle">Your BluePrint identity, assigned courses, and recent attendance activity all in one place.</p>
+                </div>
+            </section>
+            <section class="profile-layout">
+                <div class="profile-card panel-section">
+                    <div class="profile-avatar">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
+                    <h2 id="profileName">Loading...</h2>
+                    <div class="label-value">
+                        <span>Email</span>
+                        <span id="profileEmail">Loading...</span>
+                    </div>
+                    <div class="label-value">
+                        <span>Role</span>
+                        <span id="profileRole">Loading...</span>
+                    </div>
+                    <div class="label-value">
+                        <span>Member Since</span>
+                        <span id="profileCreatedAt">Loading...</span>
+                    </div>
+                </div>
+                <div class="stack">
+                    <div class="metrics-grid" id="profileMetrics"></div>
+                    <div class="profile-card panel-section">
+                        <div class="panel-title">
+                            <h3>Assigned Courses</h3>
+                        </div>
+                        <div class="split-list" id="profileCourses"></div>
+                    </div>
+<!--                    <div class="profile-card panel-section">
+                        <div class="panel-title">
+                            <h3>Recent Attendance Activity</h3>
+                        </div>
+                        <div class="activity-feed" id="profileActivity"></div>
+                    </div>-->
+                </div>
+            </section>
+        </main>
     </body>
-    <script>
-        async function loadProfile() {
-            const token = localStorage.getItem('auth_token');
-            try {
-                const res = await fetch('/api/auth/me', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!res.ok) {
-                    localStorage.removeItem('auth_token');
-                    window.location.href = '/login.html';
-                    return;
-                }
-                const user = await res.json();
-                document.getElementById('profileName').textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim();
-                document.getElementById('profileEmail').textContent = user.email || '';
-                document.getElementById('profileRole').textContent = user.role || '';
-                if (user.courses && Array.isArray(user.courses) && user.courses.length) {
-                    try {
-                        const coursesRes = await fetch('/api/courses', {
-                            method: 'GET',
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        });
-                        if (coursesRes.ok) {
-                            const allCourses = await coursesRes.json();
-                            const matched = allCourses.filter(c => user.courses.map(Number).includes(c.id));
-                            if (matched.length) {
-                                document.getElementById('profileCourses').textContent = matched
-                                    .map(c => `Room ${c.room} - ${c.period}`)
-                                    .join(', ');
-                            } else {
-                                document.getElementById('profileCourses').textContent = user.courses.join(', ');
-                            }
-                        } else {
-                            document.getElementById('profileCourses').textContent = user.courses.join(', ');
-                        }
-                    } catch (courseErr) {
-                        console.error('Error fetching course descriptions:', courseErr);
-                        document.getElementById('profileCourses').textContent = user.courses.join(', ');
-                    }
-                }
-            } catch (err) {
-                console.error('Error loading profile:', err);
-                localStorage.removeItem('auth_token');
-                window.location.href = '/login.html';
-            }
-        }
-        document.addEventListener('DOMContentLoaded', loadProfile);
-    </script>
 </html>
