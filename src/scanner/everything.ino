@@ -14,14 +14,14 @@
 
 #define FINGERPRINT_LED_GREEN 0x04
 
-const char* ssid = "BraveWeb";
-const char* password = "Br@veW3b";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 const char* SCANNER_ID = "1";
 const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
-String serverEndpoint = "http://blueprint.boo";
+const char* serverEndpoint = "http://blueprint.boo";
 
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
