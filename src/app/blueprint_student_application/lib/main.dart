@@ -296,7 +296,7 @@ class ContinueButton extends StatelessWidget {
   }
 }
 Future<String> getNFCMessage (String studentID, String token) {
-  final url = Uri.parse("https://blueprint-tm.ddns.net/api/app/encrypt_student_id");
+  final url = Uri.parse("https://blueprint.boo/api/app/encrypt_student_id");
   final response = http.post(url,
     headers: {
       "Content-Type": "application/json",
