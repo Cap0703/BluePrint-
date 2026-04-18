@@ -141,6 +141,39 @@ wss.on('connection', (ws, req) => {
         });
         wsLog(`Output relayed to ${relayCount} frontend(s)`);
       }
+
+      if (data.type === 'command') {
+        const targetScannerId = data.scannerId;
+        wsLog(`Command from frontend for scanner [${targetScannerId}]`, { command: data.command });
+        
+        const scannerSocket = scannerSockets.get(targetScannerId);
+        if (scannerSocket && scannerSocket.readyState === 1) {
+          try {
+            scannerSocket.send(JSON.stringify({
+              command: data.command,
+              commandId: data.commandId || Math.random()
+            }));
+            wsLog(`Command sent to scanner [${targetScannerId}]`);
+          } catch (sendErr) {
+            wsLog(`Error sending command to scanner: ${sendErr.message}`);
+          }
+        } else {
+          wsLog(`Scanner [${targetScannerId}] not connected or not ready`);
+          // Notify frontend that scanner is offline
+          frontendSockets.forEach(client => {
+            if (client.readyState === 1 && String(client.scannerId) === String(targetScannerId)) {
+              try {
+                client.send(JSON.stringify({
+                  type: "error",
+                  message: `Scanner ${targetScannerId} is not connected`
+                }));
+              } catch (err) {
+                wsLog(`Error notifying frontend: ${err.message}`);
+              }
+            }
+          });
+        }
+      }
       
     } catch (parseErr) {
       wsLog(`ERROR: Failed to parse JSON [${connectionId}]`, { 

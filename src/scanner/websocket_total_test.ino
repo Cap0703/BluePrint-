@@ -5,6 +5,7 @@
 #include "FS.h"
 #include "LittleFS.h"
 #include <WebSocketsClient.h>
+#include <WiFiClientSecure.h>
 
 // ========== CONFIGURATION ==========
 const char ssid[] = "BraveWeb";
@@ -17,8 +18,8 @@ const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
 const char* serverEndpoint = "https://blueprint.boo";   // Change to your server URL
-const char* wsHost = "192.168.1.146";
-const uint16_t wsPort = 3000;
+const char* wsHost = "blueprint.boo";
+const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
@@ -123,6 +124,8 @@ void mockEnroll(int slot, int studentID) {
 
 bool signIn() {
   HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
   String url = String(serverEndpoint) + "/api/scanner/auth/login";
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
@@ -170,6 +173,8 @@ void getDateTime(String &dateStr, String &timeStr) {
 void sendLog(int studentID) {
   if (authToken == "") return;
   HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
   http.begin(String(serverEndpoint) + "/api/logs");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
@@ -200,6 +205,8 @@ void sendLog(int studentID) {
 void sendHeartbeat() {
   if (authToken == "" || scannerDbId == "") return;
   HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
   http.begin(String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat");
   http.addHeader("Authorization", "Bearer " + authToken);
   int code = http.POST("");
@@ -481,7 +488,8 @@ void setup() {
   }
 
   // Setup WebSocket with heartbeats
-  webSocket.begin(wsHost, wsPort, wsPath);
+  //webSocket.begin(wsHost, wsPort, wsPath);
+  webSocket.beginSSL(wsHost, wsPort, wsPath);
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);          // Auto reconnect every 5 sec
   webSocket.enableHeartbeat(15000, 5000, 3000);  // Ping every 15s, wait 5s for pong, disconnect after 3s no pong
