@@ -7,8 +7,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54";
-const char password[] = "silentbird445";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
@@ -16,7 +16,7 @@ const char* SCANNER_ID = "1";
 const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
-const char* serverEndpoint = "http://192.168.1.146:3000";   // Change to your server URL
+const char* serverEndpoint = "https://blueprint.boo";   // Change to your server URL
 const char* wsHost = "192.168.1.146";
 const uint16_t wsPort = 3000;
 const char* wsPath = "/ws";
