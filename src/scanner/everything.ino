@@ -14,14 +14,14 @@
 
 #define FINGERPRINT_LED_GREEN 0x04
 
-const char ssid[] = "BraveWeb";
-const char password[] = "Br@veW3b";
+const char ssid[] = "NETGEAR54";
+const char password[] = "silentbird445";
 
 const char* SCANNER_ID = "1";
 const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
-const char* serverEndpoint = "http://blueprint.boo";
+const char* serverEndpoint = "https://blueprint.boo";
 
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 8;
@@ -179,7 +179,7 @@ bool signIn() {
 
   HTTPClient http;
 
-  http.begin(serverEndpoint + "/api/scanner/auth/login");
+  http.begin(String(serverEndpoint) + "/api/scanner/auth/login");
   http.addHeader("Content-Type", "application/json");
 
   StaticJsonDocument<256> doc;
@@ -239,7 +239,7 @@ void getCommand() {
 
   HTTPClient http;
 
-  http.begin(serverEndpoint + "/api/scanners/" + String(SCANNER_ID) + "/terminal");  // FIX: removed invalid $"" syntax
+  http.begin(String(serverEndpoint) + "/api/scanners/" + String(SCANNER_ID) + "/terminal");  // FIX: removed invalid $"" syntax
 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
@@ -251,7 +251,7 @@ void sendLog(int studentID) {
 
   HTTPClient http;
 
-  http.begin(serverEndpoint + "/api/logs");
+  http.begin(String(serverEndpoint) + "/api/logs");
 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);

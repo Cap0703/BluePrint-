@@ -11,7 +11,7 @@ import session from 'express-session';
 import cors from 'cors';
 import crypto from 'crypto';
 import { get } from 'http';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,7 +58,9 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   keyGenerator: (req) => {
-    return req.body.email + '_' + req.ip;
+    // Use ipKeyGenerator for correct IPv4/IPv6 handling
+    const ip = ipKeyGenerator(req);
+    return req.body.email + '_' + ip;
   },
   message: {
     error: 'Too many login attempts. Please try again later.'
@@ -866,8 +868,8 @@ function getScannerSession(scannerId) {
   if (!scannerTerminalSessions[scannerId]) {
     scannerTerminalSessions[scannerId] = {
       mode: 'scanner',
-      pendingCommand: null,
-      pendingCommandId: 0,
+      commandQueue: [],
+      nextCommandId: 1,
       lastOutput: '',
       lastOutputTime: null,
       outputVersion: 0,
@@ -901,17 +903,27 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   if (typeof command !== 'string') {
     return res.status(400).json({ error: 'Command must be a string' });
   }
+  console.log(`[BACKEND] Received command for scanner ${req.params.id}:`, req.body.command);
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
-  session.mode = modeFromTerminalCommand(cmd, session.mode);
-  session.pendingCommand = cmd;
-  session.pendingCommandId += 1;
-  session.commandSentTime = new Date();
+  
+  // Mode change commands (optional – can also be handled by scanner)
+  if (cmd === 'enroll' || cmd === 'scanner') {
+    session.mode = cmd === 'enroll' ? 'enroll' : 'scanner';
+  }
+  
+  const commandId = session.nextCommandId++;
+  session.commandQueue.push({ command: cmd, commandId });
+  const MAX_QUEUE_SIZE = 5;
+  if (session.commandQueue.length > MAX_QUEUE_SIZE) {
+    session.commandQueue.shift(); // remove oldest
+  }
+  
   res.json({ 
     message: 'Command queued for scanner',
     pending: true,
     mode: session.mode,
-    commandId: session.pendingCommandId
+    commandId: commandId
   });
 });
 
@@ -919,27 +931,41 @@ app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
   session.scannerLastSeenAt = new Date();
-  if (session.pendingCommand) {
-    const cmd = session.pendingCommand;
-    const commandId = session.pendingCommandId;
-    session.pendingCommand = null;
+  
+  if (session.commandQueue.length > 0) {
+    const next = session.commandQueue.shift();  // remove from front
     res.json({ 
-      command: cmd,
+      command: next.command,
       mode: session.mode,
-      commandId
+      commandId: next.commandId
     });
   } else {
     res.json({ 
       command: null,
       mode: session.mode,
-      commandId: session.pendingCommandId
+      commandId: session.nextCommandId  // or just 0
     });
+  }
+});
+
+app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      `UPDATE scanners SET last_sync = NOW(), scanner_status = 'online' WHERE id = $1`,
+      [id]
+    );
+    res.json({ message: 'Heartbeat received' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update heartbeat' });
   }
 });
 
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
   const { output, mode, commandId } = req.body;
+  console.log(`[SCANNER ${req.params.id}] ${output}`);
   const session = getScannerSession(scannerId);
   const now = new Date();
   session.scannerLastSeenAt = now;
@@ -1545,6 +1571,19 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 /*----------------------------------------Start Server----------------------------------------*/
 async function startServer() {
   await initializeDatabase();
+  setInterval(async () => {
+    try {
+      await pool.query(`
+        UPDATE scanners 
+        SET scanner_status = 'offline' 
+        WHERE (last_sync IS NOT NULL)
+          AND (last_sync::timestamp) < NOW() - INTERVAL '2 minutes'
+          AND scanner_status = 'online'
+      `);
+    } catch (err) {
+      console.error('Offline checker error:', err);
+    }
+  }, 30 * 1000);
   loadSettings();
   app.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);

@@ -325,7 +325,8 @@ async function sendTerminalCommand(command) {
     });
     const data = await response.json();
     if (!response.ok) {
-      appendTerminalLine(data.error || 'Unable to send command.', 'error');
+      const errorData = await response.json();
+      appendTerminalLine(`Error: ${errorData.error || 'Failed to send command'}`, 'error');
       return;
     }
 
