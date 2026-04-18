@@ -31,6 +31,9 @@ import { WebSocketServer } from 'ws';
 import http from 'http';
 import https from 'https';
 
+const useHttps = process.env.USE_HTTPS === 'true';
+let server;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -51,7 +54,20 @@ app.use(session({
   }
 }));
 
-const server = http.createServer(app);
+if (useHttps) {
+  try {
+    const key = fs.readFileSync('/etc/letsencrypt/live/blueprint.boo/privkey.pem');
+    const cert = fs.readFileSync('/etc/letsencrypt/live/blueprint.boo/fullchain.pem');
+    server = https.createServer({ key, cert }, app);
+    console.log('✅ HTTPS enabled');
+  } catch (err) {
+    console.error('❌ HTTPS setup failed:', err.message);
+    server = http.createServer(app);
+  }
+} else {
+  server = http.createServer(app);
+}
+
 const wss = new WebSocketServer({ server });
 
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
