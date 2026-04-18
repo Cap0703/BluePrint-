@@ -278,8 +278,8 @@ function connectTerminalWebSocket() {
       updateTerminalModeUi();
     }
   };
-  terminalSocket.onclose = () => {
-    console.log("Frontend WS disconnected");
+  terminalSocket.onclose = (event) => {
+    console.log("Frontend WS closed", event.code, event.reason);
   };
 }
 
