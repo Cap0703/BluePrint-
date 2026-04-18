@@ -260,7 +260,8 @@ function connectTerminalWebSocket() {
   if (terminalSocket) {
     terminalSocket.close();
   }
-  terminalSocket = new WebSocket(`ws://${window.location.host}`);
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+  terminalSocket = new WebSocket(`${wsProtocol}${window.location.host}/ws`);
   terminalSocket.onopen = () => {
     console.log("Frontend WS connected");
     terminalSocket.send(JSON.stringify({
