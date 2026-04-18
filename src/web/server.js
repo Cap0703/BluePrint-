@@ -14,6 +14,7 @@ function wsLog(msg, data = null) {
   }
 }
 
+import os from 'os';
 import express from 'express';
 import { pool, initializeDatabase } from './db.js';
 import path from 'path';
@@ -56,8 +57,8 @@ app.use(session({
 
 if (useHttps) {
   try {
-    const key = fs.readFileSync('/etc/letsencrypt/live/blueprint.boo/privkey.pem');
-    const cert = fs.readFileSync('/etc/letsencrypt/live/blueprint.boo/fullchain.pem');
+    const key = fs.readFileSync(path.join(os.homedir(), 'certs/key.pem'));
+    const cert = fs.readFileSync(path.join(os.homedir(), 'certs/cert.pem'));
     server = https.createServer({ key, cert }, app);
     console.log('✅ HTTPS enabled');
   } catch (err) {
