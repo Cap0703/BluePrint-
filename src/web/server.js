@@ -1,4 +1,19 @@
 import 'dotenv/config';
+
+// ===== ADD THIS FOR DEBUGGING =====
+const DEBUG_WS = true;  // Set to false to disable verbose logging
+
+function wsLog(msg, data = null) {
+  if (DEBUG_WS) {
+    const timestamp = new Date().toISOString();
+    if (data) {
+      console.log(`[${timestamp}] [WS] ${msg}`, data);
+    } else {
+      console.log(`[${timestamp}] [WS] ${msg}`);
+    }
+  }
+}
+
 import express from 'express';
 import { pool, initializeDatabase } from './db.js';
 import path from 'path';
@@ -14,6 +29,7 @@ import { get } from 'http';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { WebSocketServer } from 'ws';
 import http from 'http';
+import https from 'https';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,42 +65,50 @@ let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
 const frontendSockets = new Set();
 
 wss.on('connection', (ws, req) => {
-  console.log(`[WS] New connection from ${req.socket.remoteAddress}, url: ${req.url}`);
+  const connectionId = Math.random().toString(36).substr(2, 9);
+  const remoteAddress = req.socket.remoteAddress;
   
-  ws.on('error', (err) => {
-    console.error(`[WS] Socket error:`, err.message);
-  });
+  wsLog(`New connection [${connectionId}] from ${remoteAddress}`, { url: req.url });
   
   let scannerId = null;
   let isFrontend = false;
+  let messageCount = 0;
   
+  // Handle errors on the socket itself
+  ws.on('error', (err) => {
+    wsLog(`Socket error [${connectionId}]: ${err.message}`);
+  });
+  
+  // Handle incoming messages
   ws.on('message', (message) => {
+    messageCount++;
+    wsLog(`Message #${messageCount} [${connectionId}] received, length: ${message.length} bytes`);
+    
     try {
-      let data;
-      try {
-        data = JSON.parse(message.toString());
-      } catch (parseErr) {
-        console.error('[WS] Invalid JSON received:', parseErr.message);
-        console.error('[WS] Raw message:', message.toString());
-        ws.close(1002, 'Protocol error: invalid JSON');
-        return;
-      }
-
+      wsLog(`Parsing JSON...`);
+      const data = JSON.parse(message.toString());
+      wsLog(`Message parsed successfully`, { type: data.type, scannerId: data.scannerId });
+      
       if (data.type === 'auth') {
         scannerId = data.scannerId;
+        wsLog(`Auth message from scanner [${scannerId}]`, { connectionId });
         scannerSockets.set(scannerId, ws);
-        console.log(`[WS] Scanner authenticated: ${scannerId}`);
+        wsLog(`Scanner socket registered`, { scannerId, totalScanners: scannerSockets.size });
       }
       
       if (data.type === 'frontend') {
         isFrontend = true;
         ws.scannerId = data.scannerId;
+        wsLog(`Frontend connection for scanner [${data.scannerId}]`, { connectionId });
         frontendSockets.add(ws);
-        console.log(`[WS] Frontend connected for scanner: ${data.scannerId}`);
+        wsLog(`Frontend socket registered`, { totalFrontends: frontendSockets.size });
       }
       
       if (data.type === 'output') {
+        wsLog(`Output message from scanner [${data.scannerId}]`);
         console.log(`[SCANNER ${data.scannerId}] ${data.output}`);
+        
+        let relayCount = 0;
         frontendSockets.forEach(client => {
           if (client.readyState === 1 && String(client.scannerId) === String(data.scannerId)) {
             try {
@@ -93,26 +117,45 @@ wss.on('connection', (ws, req) => {
                 scannerId: data.scannerId,
                 output: data.output
               }));
+              relayCount++;
             } catch (sendErr) {
-              console.error('[WS] Error sending output to frontend:', sendErr.message);
+              wsLog(`Error relaying to frontend: ${sendErr.message}`);
             }
           }
         });
+        wsLog(`Output relayed to ${relayCount} frontend(s)`);
       }
-    } catch (err) {
-      console.error('[WS] Unexpected error in message handler:', err);
+      
+    } catch (parseErr) {
+      wsLog(`ERROR: Failed to parse JSON [${connectionId}]`, { 
+        error: parseErr.message,
+        rawMessage: message.toString().substring(0, 100) 
+      });
+      try {
+        ws.close(1002, 'Invalid JSON');
+      } catch (closeErr) {
+        wsLog(`Error closing socket: ${closeErr.message}`);
+      }
     }
   });
   
+  // Handle connection close
   ws.on('close', (code, reason) => {
-    console.log(`[WS] Connection closed. Code: ${code}, Reason: ${String(reason)}`);
+    wsLog(`Connection closed [${connectionId}]`, { 
+      code, 
+      reason: reason ? reason.toString() : 'none',
+      scannerId,
+      isFrontend,
+      messagesReceived: messageCount
+    });
+    
     if (scannerId) {
       scannerSockets.delete(scannerId);
-      console.log(`[WS] Scanner ${scannerId} disconnected`);
+      wsLog(`Scanner ${scannerId} unregistered`, { remaining: scannerSockets.size });
     }
     if (isFrontend) {
       frontendSockets.delete(ws);
-      console.log(`[WS] Frontend disconnected`);
+      wsLog(`Frontend unregistered`, { remaining: frontendSockets.size });
     }
   });
 });
