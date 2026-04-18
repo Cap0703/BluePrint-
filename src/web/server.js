@@ -12,9 +12,13 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { get } from 'http';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { WebSocketServer } from 'ws';
+import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const scannerSockets = new Map();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -31,6 +35,9 @@ app.use(session({
   }
 }));
 
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
@@ -38,6 +45,48 @@ const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
 let ATTENDANCE_GRACE_PERIOD_MINUTES = Number(process.env.GRACE_PERIOD_MINUTES || 10);
 
 let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
+
+const frontendSockets = new Set();
+
+wss.on('connection', (ws, req) => {
+  console.log(`[WS] New connection from ${req.socket.remoteAddress}, url: ${req.url}`);
+  ws.on('close', (code, reason) => {
+    console.log(`[WS] Connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+  });
+  ws.on('error', (err) => {
+    console.error(`[WS] Error:`, err.message);
+  });
+  let scannerId = null;
+  let isFrontend = false;
+  ws.on('message', (message) => {
+    const data = JSON.parse(message.toString());
+    if (data.type === 'auth') {
+      scannerId = data.scannerId;
+      scannerSockets.set(scannerId, ws);
+    }
+    if (data.type === 'frontend') {
+      isFrontend = true;
+      ws.scannerId = data.scannerId;
+      frontendSockets.add(ws);
+    }
+    if (data.type === 'output') {
+      console.log(`[SCANNER ${data.scannerId}] ${data.output}`);
+      frontendSockets.forEach(client => {
+        if (client.readyState === 1 && String(client.scannerId) === String(data.scannerId)) {
+          client.send(JSON.stringify({
+            type: "output",
+            scannerId: data.scannerId,
+            output: data.output
+          }));
+        }
+      });
+    }
+  });
+  ws.on('close', () => {
+    if (scannerId) scannerSockets.delete(scannerId);
+    if (isFrontend) frontendSockets.delete(ws);
+  });
+});
 
 function loadSettings() {
   try {
@@ -913,7 +962,17 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   }
   
   const commandId = session.nextCommandId++;
-  session.commandQueue.push({ command: cmd, commandId });
+  const ws = scannerSockets.get(scannerId);
+
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      command: cmd,
+      commandId
+    }));
+  } else {
+    // fallback to queue (offline scanner)
+    session.commandQueue.push({ command: cmd, commandId });
+  }
   const MAX_QUEUE_SIZE = 5;
   if (session.commandQueue.length > MAX_QUEUE_SIZE) {
     session.commandQueue.shift(); // remove oldest
@@ -1585,7 +1644,7 @@ async function startServer() {
     }
   }, 30 * 1000);
   loadSettings();
-  app.listen(process.env.PORT, () => {
+  server.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
   });
 }

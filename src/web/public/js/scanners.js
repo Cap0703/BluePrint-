@@ -12,6 +12,8 @@ const terminalState = {
   awaitingResponse: false
 };
 
+let terminalSocket = null;
+
 document.addEventListener('DOMContentLoaded', initScannersPage);
 
 function initScannersPage() {
@@ -248,15 +250,46 @@ async function openTerminal(scanner) {
   document.getElementById('terminalSubtitle').textContent = terminalState.scannerLabel;
   document.getElementById('terminalModal').style.display = 'flex';
   appendTerminalLine('Connected to scanner terminal session.', 'system');
+  connectTerminalWebSocket();
   await refreshTerminalStatus(true);
-  startTerminalPolling();
+  //startTerminalPolling();
   document.getElementById('terminalInput').focus();
+}
+
+function connectTerminalWebSocket() {
+  if (terminalSocket) {
+    terminalSocket.close();
+  }
+  terminalSocket = new WebSocket(`ws://${window.location.host}`);
+  terminalSocket.onopen = () => {
+    console.log("Frontend WS connected");
+    terminalSocket.send(JSON.stringify({
+      type: "frontend",
+      scannerId: terminalState.scannerId
+    }));
+  };
+  terminalSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (String(data.scannerId) !== String(terminalState.scannerId)) return;
+    if (data.type === "output") {
+      appendTerminalLine(data.output, 'output');
+      terminalState.awaitingResponse = false;
+      updateTerminalModeUi();
+    }
+  };
+  terminalSocket.onclose = () => {
+    console.log("Frontend WS disconnected");
+  };
 }
 
 function closeTerminal() {
   document.getElementById('terminalModal').style.display = 'none';
   if (terminalState.poller) {
     clearInterval(terminalState.poller);
+  }
+  if (terminalSocket) {
+    terminalSocket.close();
+    terminalSocket = null;
   }
   terminalState.poller = null;
   terminalState.scannerId = null;
