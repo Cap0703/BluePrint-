@@ -50,41 +50,70 @@ const frontendSockets = new Set();
 
 wss.on('connection', (ws, req) => {
   console.log(`[WS] New connection from ${req.socket.remoteAddress}, url: ${req.url}`);
-  ws.on('close', (code, reason) => {
-    console.log(`[WS] Connection closed. Code: ${code}, Reason: ${reason.toString()}`);
-  });
+  
   ws.on('error', (err) => {
-    console.error(`[WS] Error:`, err.message);
+    console.error(`[WS] Socket error:`, err.message);
   });
+  
   let scannerId = null;
   let isFrontend = false;
+  
   ws.on('message', (message) => {
-    const data = JSON.parse(message.toString());
-    if (data.type === 'auth') {
-      scannerId = data.scannerId;
-      scannerSockets.set(scannerId, ws);
-    }
-    if (data.type === 'frontend') {
-      isFrontend = true;
-      ws.scannerId = data.scannerId;
-      frontendSockets.add(ws);
-    }
-    if (data.type === 'output') {
-      console.log(`[SCANNER ${data.scannerId}] ${data.output}`);
-      frontendSockets.forEach(client => {
-        if (client.readyState === 1 && String(client.scannerId) === String(data.scannerId)) {
-          client.send(JSON.stringify({
-            type: "output",
-            scannerId: data.scannerId,
-            output: data.output
-          }));
-        }
-      });
+    try {
+      let data;
+      try {
+        data = JSON.parse(message.toString());
+      } catch (parseErr) {
+        console.error('[WS] Invalid JSON received:', parseErr.message);
+        console.error('[WS] Raw message:', message.toString());
+        ws.close(1002, 'Protocol error: invalid JSON');
+        return;
+      }
+
+      if (data.type === 'auth') {
+        scannerId = data.scannerId;
+        scannerSockets.set(scannerId, ws);
+        console.log(`[WS] Scanner authenticated: ${scannerId}`);
+      }
+      
+      if (data.type === 'frontend') {
+        isFrontend = true;
+        ws.scannerId = data.scannerId;
+        frontendSockets.add(ws);
+        console.log(`[WS] Frontend connected for scanner: ${data.scannerId}`);
+      }
+      
+      if (data.type === 'output') {
+        console.log(`[SCANNER ${data.scannerId}] ${data.output}`);
+        frontendSockets.forEach(client => {
+          if (client.readyState === 1 && String(client.scannerId) === String(data.scannerId)) {
+            try {
+              client.send(JSON.stringify({
+                type: "output",
+                scannerId: data.scannerId,
+                output: data.output
+              }));
+            } catch (sendErr) {
+              console.error('[WS] Error sending output to frontend:', sendErr.message);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[WS] Unexpected error in message handler:', err);
     }
   });
-  ws.on('close', () => {
-    if (scannerId) scannerSockets.delete(scannerId);
-    if (isFrontend) frontendSockets.delete(ws);
+  
+  ws.on('close', (code, reason) => {
+    console.log(`[WS] Connection closed. Code: ${code}, Reason: ${String(reason)}`);
+    if (scannerId) {
+      scannerSockets.delete(scannerId);
+      console.log(`[WS] Scanner ${scannerId} disconnected`);
+    }
+    if (isFrontend) {
+      frontendSockets.delete(ws);
+      console.log(`[WS] Frontend disconnected`);
+    }
   });
 });
 
