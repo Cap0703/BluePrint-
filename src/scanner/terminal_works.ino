@@ -4,12 +4,13 @@
 #include <time.h>
 #include "FS.h"
 #include "LittleFS.h"
-#include <WebSocketsClient.h>
 #include <WiFiClientSecure.h>
+#include <Adafruit_Fingerprint.h>
+#include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "BraveWeb";
-const char password[] = "Br@veW3b";
+const char ssid[] = "NETGEAR54";
+const char password[] = "silentbird445";
 
 WebSocketsClient webSocket;
 
@@ -17,20 +18,28 @@ const char* SCANNER_ID = "1";
 const char* SCANNER_LOCATION = "204";
 const char* SCANNER_PASSWORD = "BluePrint";
 
-const char* serverEndpoint = "https://blueprint.boo";   // Change to your server URL
+const char* serverEndpoint = "https://blueprint.boo";
 const char* wsHost = "blueprint.boo";
 const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 8;
-const int daylightOffset_sec = 3600;
+const long gmtOffset_sec = 8 * 3600;
+const int daylightOffset_sec = 0;
+
+// ========== FINGERPRINT HARDWARE ==========
+#define RX_GPIO 16
+#define TX_GPIO 17
+HardwareSerial mySerial(2);
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
 // ========== GLOBALS ==========
 String authToken = "";
-String scannerDbId = "";        // internal DB id of this scanner (from login)
-String mode = "scanner";        // "scanner" or "enroll"
+String scannerDbId = "";
+String mode = "scanner";
 bool WifiConnected = false;
+bool fingerprintInitialized = false;
+uint8_t lastLedColor = FINGERPRINT_LED_RED;
 
 // Virtual fingerprint mapping: slot -> student ID
 #define MAX_FINGERPRINT_SLOTS 127
@@ -46,27 +55,42 @@ void handleStorageFull();
 void mockEnroll(int slot, int studentID);
 void sendOutput(String msg, int commandId);
 void sendHeartbeat();
-void checkForCommand();
 void handleCommand(String cmd, int commandId);
 void sendLog(int studentID);
 void getDateTime(String &dateStr, String &timeStr);
 bool signIn();
 void connectWifi();
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length);
+void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length);
+void initializeFingerprint();
+void updateLedStatus();
 
-// ========== FINGERPRINT HARDWARE (commented out – uncomment when hardware is available) ==========
-/*
-#include <Adafruit_Fingerprint.h>
-#define RX_GPIO 16
-#define TX_GPIO 17
-HardwareSerial mySerial(2);
-Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
-#define FINGERPRINT_LED_GREEN 0x04
-// ... all original fingerprint functions would go here
-*/
+// ========== FINGERPRINT ==========
+void initializeFingerprint() {
+  mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
+  delay(5);
+  finger.begin(57600);
+  delay(100);
+  if (finger.verifyPassword()) {
+    Serial.println("Found fingerprint sensor!");
+    fingerprintInitialized = true;
+    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_RED);
+    lastLedColor = FINGERPRINT_LED_RED;
+  } else {
+    Serial.println("Did not find fingerprint sensor :(");
+    fingerprintInitialized = false;
+  }
+}
 
-// ========== MOCK FUNCTIONS (replace with real ones later) ==========
+void updateLedStatus() {
+  if (!fingerprintInitialized) return;
+  uint8_t newColor = (WiFi.status() == WL_CONNECTED) ? FINGERPRINT_LED_BLUE : FINGERPRINT_LED_RED;
+  if (newColor != lastLedColor) {
+    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, newColor);
+    lastLedColor = newColor;
+  }
+}
 
+// ========== LITTLEFS ==========
 void loadStudents() {
   File file = LittleFS.open(STUDENTS_BIN, FILE_READ);
   if (file) {
@@ -103,7 +127,6 @@ void handleStorageFull() {
   while (!Serial.available());
   char response = Serial.read();
   if (response == 'y' || response == 'Y') {
-    // In real hardware: finger.emptyDatabase()
     Serial.println("[MOCK] All fingerprints deleted.");
     memset(students, 0, sizeof(students));
     saveStudents();
@@ -113,7 +136,6 @@ void handleStorageFull() {
   }
 }
 
-// Mock enrollment: just store studentID in the next free slot
 void mockEnroll(int slot, int studentID) {
   students[slot] = studentID;
   saveStudents();
@@ -121,38 +143,49 @@ void mockEnroll(int slot, int studentID) {
 }
 
 // ========== SERVER COMMUNICATION ==========
-
 bool signIn() {
-  HTTPClient http;
-  WiFiClientSecure client;
-  client.setInsecure();
-  String url = String(serverEndpoint) + "/api/scanner/auth/login";
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
-
-  StaticJsonDocument<256> doc;
-  doc["SCANNER_ID"] = SCANNER_ID;
-  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
-  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
-
-  String body;
-  serializeJson(doc, body);
-
-  int code = http.POST(body);
-  if (code == 200) {
-    String response = http.getString();
-    StaticJsonDocument<512> resp;
-    deserializeJson(resp, response);
-    authToken = resp["token"].as<String>();
-    scannerDbId = resp["user"]["id"].as<String>();   // get internal DB id
-    Serial.println("✓ Scanner authenticated.");
-    http.end();
-    return true;
-  } else {
-    Serial.printf("✗ Authentication failed, HTTP %d\n", code);
-    http.end();
-    return false;
+  const int maxRetries = 3;
+  int retryCount = 0;
+  while (retryCount < maxRetries) {
+    Serial.printf("Auth attempt %d/%d...\n", retryCount + 1, maxRetries);
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(15000);
+    String url = String(serverEndpoint) + "/api/scanner/auth/login";
+    if (!http.begin(client, url)) {
+      Serial.println("  ✗ Failed to begin HTTP connection");
+      http.end();
+      delay(3000);
+      retryCount++;
+      continue;
+    }
+    http.addHeader("Content-Type", "application/json");
+    StaticJsonDocument<256> doc;
+    doc["SCANNER_ID"] = SCANNER_ID;
+    doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+    doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+    String body;
+    serializeJson(doc, body);
+    int code = http.POST(body);
+    if (code == 200) {
+      String response = http.getString();
+      StaticJsonDocument<512> resp;
+      deserializeJson(resp, response);
+      authToken = resp["token"].as<String>();
+      scannerDbId = resp["user"]["id"].as<String>();
+      Serial.println("✓ Scanner authenticated.");
+      http.end();
+      return true;
+    } else {
+      Serial.printf("  ✗ HTTP %d\n", code);
+      http.end();
+      delay(3000);
+      retryCount++;
+    }
   }
+  Serial.println("✗ Authentication failed after all retries");
+  return false;
 }
 
 void getDateTime(String &dateStr, String &timeStr) {
@@ -172,16 +205,19 @@ void getDateTime(String &dateStr, String &timeStr) {
 
 void sendLog(int studentID) {
   if (authToken == "") return;
-  HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
-  http.begin(String(serverEndpoint) + "/api/logs");
+  HTTPClient http;
+  http.setTimeout(10000);
+  if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+    Serial.println("Failed to begin sendLog HTTP");
+    http.end();
+    return;
+  }
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
-
   String dateStr, timeStr;
   getDateTime(dateStr, timeStr);
-
   StaticJsonDocument<256> doc;
   doc["scanner_location"] = SCANNER_LOCATION;
   doc["scanner_id"] = SCANNER_ID;
@@ -189,10 +225,8 @@ void sendLog(int studentID) {
   doc["date_scanned"] = dateStr;
   doc["time_scanned"] = timeStr;
   doc["status"] = "present";
-
   String body;
   serializeJson(doc, body);
-
   int code = http.POST(body);
   if (code == 201) {
     Serial.println("✓ Attendance logged.");
@@ -204,15 +238,19 @@ void sendLog(int studentID) {
 
 void sendHeartbeat() {
   if (authToken == "" || scannerDbId == "") return;
-  HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
-  http.begin(String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat");
+  HTTPClient http;
+  http.setTimeout(10000);
+  if (!http.begin(client, String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat")) {
+    Serial.println("Failed to begin heartbeat HTTP");
+    http.end();
+    return;
+  }
   http.addHeader("Authorization", "Bearer " + authToken);
   int code = http.POST("");
   if (code != 200) {
     Serial.printf("Heartbeat failed: %d\n", code);
-    // Force a re‑authentication next loop
     authToken = "";
   }
   http.end();
@@ -223,37 +261,30 @@ void sendOutput(String msg, int commandId) {
     Serial.println("WebSocket not connected, cannot send output.");
     return;
   }
-
   StaticJsonDocument<256> doc;
   doc["type"] = "output";
   doc["scannerId"] = scannerDbId;
   doc["output"] = msg;
   doc["mode"] = mode;
   doc["commandId"] = commandId;
-
   String body;
   serializeJson(doc, body);
   webSocket.sendTXT(body);
 }
 
 // ========== COMMAND HANDLING ==========
-
 void handleCommand(String cmd, int commandId) {
-  Serial.printf("[CMD] %s (id=%d)\n", cmd.c_str(), commandId);
-
-  // Mode switching
+  Serial.printf("[CMD] Received: '%s' (id=%d)\n", cmd.c_str(), commandId);
   if (cmd == "scanner") {
     mode = "scanner";
-    sendOutput("Switched to scanner mode. Send a student ID (number) to simulate fingerprint scan.", commandId);
+    sendOutput("Switched to scanner mode.", commandId);
     return;
   }
   else if (cmd == "enroll") {
     mode = "enroll";
-    sendOutput("Switched to enroll mode. Send a student ID (number) to enroll that student into next free virtual slot.", commandId);
+    sendOutput("Switched to enroll mode. Send a student ID to enroll.", commandId);
     return;
   }
-
-  // Administrative commands
   if (cmd == "slots show") {
     String msg = "Stored fingerprints: ";
     int count = 0;
@@ -275,13 +306,12 @@ void handleCommand(String cmd, int commandId) {
   }
   else if (cmd == "reset") {
     mode = "scanner";
-    sendOutput("Scanner reset to scanner mode. All pending state cleared.", commandId);
+    sendOutput("Scanner reset to scanner mode.", commandId);
     return;
   }
   else if (cmd == "reauth") {
     if (signIn()) {
       sendOutput("Re-authentication successful.", commandId);
-      // Re‑authenticate WebSocket as well
       if (webSocket.isConnected()) {
         StaticJsonDocument<256> doc;
         doc["type"] = "auth";
@@ -292,12 +322,10 @@ void handleCommand(String cmd, int commandId) {
         webSocket.sendTXT(msg);
       }
     } else {
-      sendOutput("Re-authentication FAILED. Check network or server.", commandId);
+      sendOutput("Re-authentication FAILED.", commandId);
     }
     return;
   }
-
-  // Reset specific slot: e.g., "slots reset 5"
   if (cmd.startsWith("slots reset ")) {
     String slotStr = cmd.substring(12);
     slotStr.trim();
@@ -307,31 +335,21 @@ void handleCommand(String cmd, int commandId) {
         int oldStudent = students[slot];
         students[slot] = 0;
         saveStudents();
-        String msg = "Slot " + String(slot) + " (Student ID " + String(oldStudent) + ") has been cleared.";
-        sendOutput(msg, commandId);
+        sendOutput("Slot " + String(slot) + " (Student ID " + String(oldStudent) + ") cleared.", commandId);
       } else {
-        String msg = "Slot " + String(slot) + " was already empty.";
-        sendOutput(msg, commandId);
+        sendOutput("Slot " + String(slot) + " was already empty.", commandId);
       }
     } else {
-      String msg = "Invalid slot number. Use 1-" + String(MAX_FINGERPRINT_SLOTS) + ".";
-      sendOutput(msg, commandId);
+      sendOutput("Invalid slot number. Use 1-" + String(MAX_FINGERPRINT_SLOTS) + ".", commandId);
     }
     return;
   }
-
-  // Numeric command handling (enrollment or scanning)
   bool isNumeric = true;
   for (unsigned int i = 0; i < cmd.length(); i++) {
-    if (!isdigit(cmd[i])) {
-      isNumeric = false;
-      break;
-    }
+    if (!isdigit(cmd[i])) { isNumeric = false; break; }
   }
-
   if (isNumeric) {
     int studentID = cmd.toInt();
-
     if (mode == "enroll") {
       int slot = getNextFreeSlot();
       if (slot == -1) {
@@ -340,184 +358,140 @@ void handleCommand(String cmd, int commandId) {
         return;
       }
       mockEnroll(slot, studentID);
-      String msg = "Enrolled Student ID " + String(studentID) + " into virtual slot " + String(slot);
-      sendOutput(msg, commandId);
-    }
-    else { // scanner mode
+      sendOutput("Enrolled Student ID " + String(studentID) + " into slot " + String(slot), commandId);
+    } else {
       int foundSlot = -1;
       for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
-        if (students[i] == studentID) {
-          foundSlot = i;
-          break;
-        }
+        if (students[i] == studentID) { foundSlot = i; break; }
       }
       if (foundSlot == -1) {
-        String msg = "Student ID " + String(studentID) + " not enrolled in any fingerprint slot.";
-        sendOutput(msg, commandId);
+        sendOutput("Student ID " + String(studentID) + " not enrolled.", commandId);
         return;
       }
       sendLog(studentID);
-      String msg = "Fingerprint matched slot " + String(foundSlot) + " → Logged attendance for Student " + String(studentID);
-      sendOutput(msg, commandId);
+      sendOutput("Matched slot " + String(foundSlot) + " → Logged attendance for Student " + String(studentID), commandId);
     }
-  }
-  else {
+  } else {
     sendOutput("Unknown command: " + cmd, commandId);
   }
 }
 
-// ========== WEB SOCKET EVENT HANDLER ==========
-
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
-  switch(type) {
-    case WStype_CONNECTED:
+// ========== WEBSOCKET EVENT HANDLER ==========
+void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
+  switch (type) {
+    case WStype_CONNECTED: {
       Serial.println("WebSocket connected.");
-      // Authenticate with the server
-      {
-        StaticJsonDocument<256> doc;
-        doc["type"] = "auth";
-        doc["scannerId"] = scannerDbId;
-        doc["token"] = authToken;
-        String msg;
-        serializeJson(doc, msg);
-        webSocket.sendTXT(msg);
-      }
+      StaticJsonDocument<256> doc;
+      doc["type"] = "auth";
+      doc["scannerId"] = scannerDbId;
+      doc["token"] = authToken;
+      String msg;
+      serializeJson(doc, msg);
+      webSocket.sendTXT(msg);
       break;
-
-      case WStype_DISCONNECTED:
-        {
-          uint16_t code = 0;
-          String reason = "";
-          if (payload && length >= 2) {
-            code = ((uint16_t)payload[0] << 8) | payload[1];
-            if (length > 2) {
-              reason = String((char*)&payload[2], length - 2);
-            }
-          }
-          Serial.printf("WebSocket disconnected. Code: %u, Reason: %s\n", code, reason.c_str());
-          mode = "scanner";
-        }
-        break;
-
-    case WStype_TEXT:
-      {
-        StaticJsonDocument<256> doc;
-        DeserializationError err = deserializeJson(doc, payload);
-        if (err) {
-          Serial.printf("JSON parse error: %s\n", err.c_str());
-          return;
-        }
-        String command = doc["command"] | "";
-        int commandId = doc["commandId"] | 0;
-        if (command != "") {
-          handleCommand(command, commandId);
-        }
-      }
+    }
+    case WStype_DISCONNECTED:
+      Serial.println("WebSocket disconnected.");
+      mode = "scanner";
       break;
-
+    case WStype_TEXT: {
+      String data = (char*)payload;
+      Serial.printf("[WS] Received: %s\n", data.c_str());
+      StaticJsonDocument<256> doc;
+      DeserializationError err = deserializeJson(doc, data);
+      if (err) { Serial.printf("JSON parse error: %s\n", err.c_str()); break; }
+      String command = doc["command"] | "";
+      int commandId = doc["commandId"] | 0;
+      if (command != "") handleCommand(command, commandId);
+      break;
+    }
     case WStype_ERROR:
-      Serial.printf("WebSocket error: %s\n", payload);
+      Serial.println("WebSocket error.");
       break;
-
-    case WStype_PING:
-      // The library automatically replies with a pong
-      break;
-
-    case WStype_PONG:
-      // Optional: log received pong
-      // Serial.println("Pong received");
+    default:
       break;
   }
 }
 
-// ========== WIFI CONNECTION ==========
-
+// ========== WIFI ==========
 void connectWifi() {
   Serial.printf("Connecting to %s", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 40) {
     delay(500);
     Serial.print(".");
     attempts++;
+    updateLedStatus();
   }
-
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi connected.");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
     WifiConnected = true;
+    updateLedStatus();
+    delay(2000);
   } else {
     Serial.println("\nWiFi connection FAILED!");
-    Serial.print("Status code: ");
-    Serial.println(WiFi.status());
     WifiConnected = false;
-    // Will retry in loop
+    updateLedStatus();
   }
 }
 
 // ========== SETUP ==========
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // Initialize LittleFS
+  Serial.println("Initializing fingerprint sensor...");
+  initializeFingerprint();
+
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS mount failed!");
     while (1) delay(1);
   }
   loadStudents();
 
-  // Connect to WiFi
   connectWifi();
   while (!WifiConnected) {
     delay(2000);
     connectWifi();
   }
 
-  // NTP for timestamps
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-  // Authenticate with server (HTTP)
+
   if (!signIn()) {
     Serial.println("Fatal: cannot authenticate with server.");
     while (1) delay(1000);
   }
 
-  // Setup WebSocket with heartbeats
-  //webSocket.begin(wsHost, wsPort, wsPath);
-  webSocket.beginSSL(wsHost, wsPort, wsPath);
-  webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);          // Auto reconnect every 5 sec
-  webSocket.enableHeartbeat(15000, 5000, 3000);  // Ping every 15s, wait 5s for pong, disconnect after 3s no pong
+  webSocket.beginSSL(wsHost, wsPort, wsPath); 
+  webSocket.onEvent(onWebSocketEvent);
+  webSocket.setReconnectInterval(5000);
 
   Serial.println("Ready. Mode: " + mode);
   Serial.println("Use web terminal to send commands.");
 }
 
 // ========== LOOP ==========
-
 void loop() {
-  // Handle WebSocket events
   webSocket.loop();
 
-  // Check WiFi and reconnect if necessary
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi lost – reconnecting...");
+    WifiConnected = false;
     connectWifi();
-    // If WiFi comes back, WebSocket library will reconnect automatically
   }
 
-  // Periodic HTTP heartbeat (updates scanner status in DB)
+  updateLedStatus();
+
   static unsigned long lastHeartbeat = 0;
   if (millis() - lastHeartbeat > 5000) {
     sendHeartbeat();
     lastHeartbeat = millis();
   }
 
-  // Give time for other tasks but keep WebSocket responsive
   delay(100);
 }
