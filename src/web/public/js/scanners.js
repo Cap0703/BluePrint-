@@ -33,8 +33,8 @@ function bindScannerUi() {
       submitTerminalInput();
     }
   });
-  document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('scanner'));
-  document.getElementById('enrollModeBtn').addEventListener('click', () => sendTerminalCommand('enroll'));
+  document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('set mode scanner'));
+  document.getElementById('enrollModeBtn').addEventListener('click', () => sendTerminalCommand('set mode enroll'));
   document.getElementById('refreshTerminalBtn').addEventListener('click', refreshTerminalStatus);
 
   window.addEventListener('click', event => {
