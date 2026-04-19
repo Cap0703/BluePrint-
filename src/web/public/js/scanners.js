@@ -49,30 +49,13 @@ function bindScannerUi() {
   });
   document.getElementById('terminalInput').addEventListener('input', function () {
     const value = this.value.toLowerCase();
-    const ghost = document.getElementById('terminalGhost');
+
     const suggestion = COMMANDS.find(cmd => cmd.startsWith(value));
 
     if (suggestion && value.length > 1) {
       this.setAttribute("data-suggestion", suggestion);
-      // Show the typed portion invisible + the remaining suggestion visible
-      ghost.innerHTML =
-        '<span style="visibility:hidden">' + escapeHtml(this.value) + '</span>' +
-        escapeHtml(suggestion.slice(value.length));
     } else {
       this.removeAttribute("data-suggestion");
-      ghost.textContent = '';
-    }
-  });
-
-  document.getElementById('terminalInput').addEventListener('keydown', function (event) {
-    if (event.key === 'Tab') {
-      const suggestion = this.getAttribute('data-suggestion');
-      if (suggestion) {
-        event.preventDefault();
-        this.value = suggestion;
-        this.removeAttribute('data-suggestion');
-        document.getElementById('terminalGhost').textContent = '';
-      }
     }
   });
   document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('set mode scanner'));
@@ -294,7 +277,7 @@ async function openTerminal(scanner) {
   appendTerminalLine('Connected to scanner terminal session.', 'system');
   connectTerminalWebSocket();
   await refreshTerminalStatus(true);
-  //startTerminalPolling();
+  startTerminalPolling();
   document.getElementById('terminalInput').focus();
 }
 
@@ -316,6 +299,15 @@ terminalSocket = new WebSocket(`${wsProtocol}${window.location.host}/ws`);
     if (String(data.scannerId) !== String(terminalState.scannerId)) return;
     if (data.type === "output") {
       appendTerminalLine(data.output, 'output');
+      terminalState.awaitingResponse = false;
+      // The scanner sends its current mode with every output — keep the pill in sync
+      if (data.mode && data.mode !== terminalState.mode) {
+        terminalState.mode = data.mode;
+      }
+      updateTerminalModeUi();
+    }
+    if (data.type === "error") {
+      appendTerminalLine(data.message || 'Scanner error.', 'error');
       terminalState.awaitingResponse = false;
       updateTerminalModeUi();
     }
@@ -342,10 +334,22 @@ function startTerminalPolling() {
   if (terminalState.poller) {
     clearInterval(terminalState.poller);
   }
-  terminalState.poller = setInterval(() => {
+  // Poll only for heartbeat and mode — output arrives via WebSocket in real time.
+  // Using a longer interval since this is just keeping the pill and mode chip fresh.
+  terminalState.poller = setInterval(async () => {
     if (!terminalState.scannerId) return;
-    refreshTerminalStatus();
-  }, 1500);
+    try {
+      const response = await fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`);
+      const data = await response.json();
+      if (data.mode && data.mode !== terminalState.mode) {
+        terminalState.mode = data.mode;
+        updateTerminalModeUi();
+      }
+      updateHeartbeat(data.scannerLastSeenAt);
+    } catch (err) {
+      // silent — WS is primary, this is just a heartbeat fallback
+    }
+  }, 3000);
 }
 
 async function refreshTerminalStatus(forceIntro = false) {
@@ -385,8 +389,6 @@ async function submitTerminalInput() {
   if (!command) return;
   await sendTerminalCommand(command);
   input.value = '';
-  input.removeAttribute('data-suggestion');
-  document.getElementById('terminalGhost').textContent = '';
   input.focus();
 }
 
