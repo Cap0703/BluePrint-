@@ -84,6 +84,10 @@ const frontendSockets = new Set();
 wss.on('connection', (ws, req) => {
   const connectionId = Math.random().toString(36).substr(2, 9);
   const remoteAddress = req.socket.remoteAddress;
+  const pingInterval = setInterval(() => {
+  if (ws.readyState === ws.OPEN) ws.ping();
+  }, 30000);
+  ws.on('close', () => clearInterval(pingInterval));
   
   wsLog(`New connection [${connectionId}] from ${remoteAddress}`, { url: req.url });
   
