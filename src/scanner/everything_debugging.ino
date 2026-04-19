@@ -67,7 +67,7 @@ void loadStudents();
 void saveStudents();
 int getNextFreeSlot();
 void handleStorageFull();
-void sendOutput(String msg, int commandId);
+void sendOutput(String msg, int commandId = -1);
 void sendHeartbeat();
 void handleCommand(String cmd, int commandId);
 void sendLog(int studentID, String method);
@@ -123,11 +123,6 @@ void initializeNFC() {
   }
   
   Serial.print("✓ Found PN5");
-  Serial.println((versiondata >> 24) & 0xFF, HEX);
-  Serial.print("  Firmware ver. ");
-  Serial.print((versiondata >> 16) & 0xFF, DEC);
-  Serial.print('.');
-  Serial.println((versiondata >> 8) & 0xFF, DEC);
   
   nfc.SAMConfig();
   nfcInitialized = true;
@@ -146,7 +141,6 @@ String readNFCNDEFText() {
       break;
     }
   }
-
   // Look for NDEF TLV (type 0x03)
   for (int i = 0; i < idx - 2; i++) {
     if (buf[i] == 0x03) {
@@ -182,55 +176,6 @@ String readNFCNDEFText() {
     }
   }
   return "";  // no valid text record found
-}
-
-void handleNFCCard() {
-  uint8_t success;
-  uint8_t uid[7];
-  uint8_t uidLength;
-
-  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
-
-  if (success) {
-    Serial.println("✓ Found an ISO14443A card");
-    Serial.print("  UID Length: ");
-    Serial.print(uidLength, DEC);
-    Serial.println(" bytes");
-    Serial.print("  UID Value: ");
-    nfc.PrintHex(uid, uidLength);
-    Serial.println();
-
-    if (uidLength == 7) {
-      Serial.println("Reading NDEF text record from NTAG2xx...");
-      String nfcText = readNFCNDEFText();
-
-      if (nfcText.length() > 0) {
-        Serial.println("\n----- NFC TEXT DATA -----");
-        Serial.println(nfcText);
-        Serial.println("------------------------");
-
-        // Try to extract numeric student ID
-        nfcText.trim();
-        bool isNumeric = true;
-        for (unsigned int i = 0; i < nfcText.length(); i++) {
-          if (!isdigit(nfcText[i])) {
-            isNumeric = false;
-            break;
-          }
-        }
-
-        if (isNumeric && nfcText.length() > 0) {
-          int studentID = nfcText.toInt();
-          sendLog(studentID, "NFC");
-          sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-        } else {
-          sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
-        }
-      } else {
-        sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
-      }
-    }
-  }
 }
 
 // ========== LITTLEFS ==========
@@ -291,87 +236,102 @@ int findStudent(int fingerprintID) {
 int scanFingerprint() {
   uint8_t p = finger.getImage();
   if (p != FINGERPRINT_OK) return -1;
-  
   p = finger.image2Tz();
   if (p != FINGERPRINT_OK) return -1;
-  
   p = finger.fingerSearch();
   if (p != FINGERPRINT_OK) return -1;
-  
   return finger.fingerID;
+}
+
+// Flush WS send buffer — call after every sendOutput inside blocking loops
+static inline void wsFlush() {
+  for (int i = 0; i < 10; i++) { webSocket.loop(); delay(10); }
 }
 
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
-  
+
+  // ── Step 1: first scan ───────────────────────────────────────────────────
+  sendOutput("Place finger on sensor for student " + String(sID) + "...", -1);
+  wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
-  Serial.println("Place finger on sensor...");
+
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
-    if (p != FINGERPRINT_OK) { Serial.println("\nImaging error, try again."); }
+    webSocket.loop();
+    if (p == FINGERPRINT_NOFINGER) { continue; }
+    if (p != FINGERPRINT_OK) { continue; }
   }
-  
+
   p = finger.image2Tz(1);
   if (p != FINGERPRINT_OK) {
-    Serial.println("Conversion failed. Try again.");
+    sendOutput("First scan failed — try again.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
-  
-  Serial.println("\nFirst scan OK. Remove finger.");
+
+  // ── Step 2: lift finger ──────────────────────────────────────────────────
+  sendOutput("Good scan. Lift your finger.", -1);
+  wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
-  while (finger.getImage() != FINGERPRINT_NOFINGER);
-  
+  while (finger.getImage() != FINGERPRINT_NOFINGER) { webSocket.loop(); }
+
+  // ── Step 3: second scan ──────────────────────────────────────────────────
   p = -1;
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
-  Serial.println("Place the SAME finger again...");
+  sendOutput("Place the SAME finger again to confirm...", -1);
+  wsFlush();
+
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
-    if (p != FINGERPRINT_OK) { Serial.println("\nImaging error, try again."); }
+    webSocket.loop();
+    if (p == FINGERPRINT_NOFINGER) { continue; }
+    if (p != FINGERPRINT_OK) { continue; }
   }
-  
+
   p = finger.image2Tz(2);
   if (p != FINGERPRINT_OK) {
-    Serial.println("Conversion failed. Try again.");
+    sendOutput("Second scan failed. Try again.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
-  
+
+  // ── Step 4: create & store model ────────────────────────────────────────
   p = finger.createModel();
   if (p == FINGERPRINT_ENROLLMISMATCH) {
-    Serial.println("Fingers did not match! Try again.");
+    sendOutput("Fingerprints did not match — please retry.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
   if (p != FINGERPRINT_OK) {
-    Serial.println("Model creation error.");
+    sendOutput("Model creation failed (error " + String(p) + ").", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
-  
+
   p = finger.storeModel(slot);
   if (p != FINGERPRINT_OK) {
-    Serial.println("Failed to store model on sensor.");
+    sendOutput("Failed to store fingerprint (error " + String(p) + ").", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
-  
+
   students[slot] = sID;
   saveStudents();
-  
-  Serial.print("\n✓ Enrolled Student #");
-  Serial.print(sID);
-  Serial.print(" at fingerprint slot #");
-  Serial.println(slot);
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
+  sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
+  wsFlush();
   delay(3000);
   return FINGERPRINT_OK;
 }
@@ -381,14 +341,12 @@ bool signIn() {
   const int maxRetries = 3;
   int retryCount = 0;
   while (retryCount < maxRetries) {
-    Serial.printf("Auth attempt %d/%d...\n", retryCount + 1, maxRetries);
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.setTimeout(15000);
     String url = String(serverEndpoint) + "/api/scanner/auth/login";
     if (!http.begin(client, url)) {
-      Serial.println("  ✗ Failed to begin HTTP connection");
       http.end();
       delay(3000);
       retryCount++;
@@ -412,13 +370,11 @@ bool signIn() {
       http.end();
       return true;
     } else {
-      Serial.printf("  ✗ HTTP %d\n", code);
       http.end();
       delay(3000);
       retryCount++;
     }
   }
-  Serial.println("✗ Authentication failed after all retries");
   return false;
 }
 
@@ -444,7 +400,6 @@ void sendLog(int studentID, String method = "fingerprint") {
   HTTPClient http;
   http.setTimeout(10000);
   if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
-    Serial.println("Failed to begin sendLog HTTP");
     http.end();
     return;
   }
@@ -464,9 +419,7 @@ void sendLog(int studentID, String method = "fingerprint") {
   serializeJson(doc, body);
   int code = http.POST(body);
   if (code == 201) {
-    Serial.printf("✓ Attendance logged via %s.\n", method.c_str());
   } else {
-    Serial.printf("✗ Log failed, HTTP %d\n", code);
   }
   http.end();
 }
@@ -478,14 +431,12 @@ void sendHeartbeat() {
   HTTPClient http;
   http.setTimeout(10000);
   if (!http.begin(client, String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat")) {
-    Serial.println("Failed to begin heartbeat HTTP");
     http.end();
     return;
   }
   http.addHeader("Authorization", "Bearer " + authToken);
   int code = http.POST("");
   if (code != 200) {
-    Serial.printf("Heartbeat failed: %d\n", code);
     authToken = "";
   }
   http.end();
@@ -493,7 +444,6 @@ void sendHeartbeat() {
 
 void sendOutput(String msg, int commandId) {
   if (!webSocket.isConnected()) {
-    Serial.println("WebSocket not connected, cannot send output.");
     return;
   }
   StaticJsonDocument<256> doc;
@@ -509,50 +459,64 @@ void sendOutput(String msg, int commandId) {
 
 // ========== COMMAND HANDLING ==========
 void handleCommand(String cmd, int commandId) {
-  Serial.printf("[CMD] Received: '%s' (id=%d)\n", cmd.c_str(), commandId);
-  
-  if (cmd == "scanner") {
-    mode = "scanner";
-    sendOutput("Switched to FINGERPRINT SCANNER mode.", commandId);
-    return;
-  }
-  else if (cmd == "enroll") {
-    mode = "enroll";
-    sendOutput("Switched to FINGERPRINT ENROLL mode. Send a student ID to enroll.", commandId);
-    return;
-  }
-  
-  if (cmd == "slots show") {
-    String msg = "Stored fingerprints: ";
-    int count = 0;
-    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
-      if (students[i] != 0) {
-        msg += "slot" + String(i) + "=" + String(students[i]) + " ";
-        count++;
-      }
+
+  cmd.trim();
+
+  // ===== MODE =====
+  if (cmd.startsWith("set mode ")) {
+    String newMode = cmd.substring(9);
+    newMode.trim();
+
+    if (newMode == "scanner" || newMode == "enroll") {
+      mode = newMode;
+      sendOutput("Mode set to " + newMode, commandId);
+    } else {
+      sendOutput("Invalid mode. Use 'scanner' or 'enroll'.", commandId);
     }
-    if (count == 0) msg = "No fingerprints stored.";
+    return;
+  }
+
+  // ===== STATUS =====
+  if (cmd == "status") {
+    String msg = "Status:\n";
+    msg += "Mode: " + mode + "\n";
+    msg += "WiFi: " + String(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected") + "\n";
+    msg += "IP: " + WiFi.localIP().toString() + "\n";
+    msg += "Fingerprint: " + String(fingerprintInitialized ? "OK" : "NOT FOUND") + "\n";
+    msg += "NFC: " + String(nfcInitialized ? "OK" : "NOT FOUND") + "\n";
+    msg += "Auth: " + String(authToken != "" ? "OK" : "NOT AUTHENTICATED");
     sendOutput(msg, commandId);
     return;
   }
-  else if (cmd == "slots reset") {
-    memset(students, 0, sizeof(students));
-    if (finger.emptyDatabase() == FINGERPRINT_OK) {
-      saveStudents();
-      sendOutput("All fingerprint slots have been erased.", commandId);
-    } else {
-      sendOutput("Failed to erase fingerprint sensor database.", commandId);
-    }
+
+  // ===== PING =====
+  if (cmd == "ping") {
+    sendOutput("pong", commandId);
     return;
   }
-  else if (cmd == "reset") {
-    mode = "scanner";
-    sendOutput("Scanner reset to SCANNER mode.", commandId);
+
+  // ===== WIFI =====
+  if (cmd == "wifi info") {
+    String msg = "WiFi Info:\n";
+    msg += "SSID: " + String(WiFi.SSID()) + "\n";
+    msg += "IP: " + WiFi.localIP().toString() + "\n";
+    msg += "RSSI: " + String(WiFi.RSSI()) + " dBm";
+    sendOutput(msg, commandId);
     return;
   }
-  else if (cmd == "reauth") {
+
+  // ===== RESTART =====
+  if (cmd == "restart") {
+    sendOutput("Restarting device...", commandId);
+    delay(500);
+    ESP.restart();
+  }
+
+  // ===== REAUTH =====
+  if (cmd == "reauth") {
     if (signIn()) {
       sendOutput("Re-authentication successful.", commandId);
+
       if (webSocket.isConnected()) {
         StaticJsonDocument<256> doc;
         doc["type"] = "auth";
@@ -562,68 +526,154 @@ void handleCommand(String cmd, int commandId) {
         serializeJson(doc, msg);
         webSocket.sendTXT(msg);
       }
+
     } else {
       sendOutput("Re-authentication FAILED.", commandId);
     }
     return;
   }
-  
-  if (cmd.startsWith("slots reset ")) {
-    String slotStr = cmd.substring(12);
-    slotStr.trim();
-    int slot = slotStr.toInt();
-    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
-      if (students[slot] != 0) {
-        int oldStudent = students[slot];
-        students[slot] = 0;
-        saveStudents();
-        sendOutput("Slot " + String(slot) + " (Student ID " + String(oldStudent) + ") cleared.", commandId);
-      } else {
-        sendOutput("Slot " + String(slot) + " was already empty.", commandId);
+
+  // ===== SLOT LIST =====
+  if (cmd == "slots list") {
+    String msg = "Slots:\n";
+    int count = 0;
+
+    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
+      if (students[i] != 0) {
+        msg += "Slot " + String(i) + " → " + String(students[i]) + "\n";
+        count++;
       }
+    }
+
+    if (count == 0) msg = "No fingerprints stored.";
+
+    sendOutput(msg, commandId);
+    return;
+  }
+
+  // ===== SLOT CLEAR ALL =====
+  if (cmd == "slots clear all") {
+    memset(students, 0, sizeof(students));
+
+    if (finger.emptyDatabase() == FINGERPRINT_OK) {
+      saveStudents();
+      sendOutput("All slots cleared.", commandId);
     } else {
-      sendOutput("Invalid slot number. Use 1-" + String(MAX_FINGERPRINT_SLOTS) + ".", commandId);
+      sendOutput("Failed to clear sensor.", commandId);
     }
     return;
   }
-  
-  // Handle numeric commands (student IDs for enrollment or fingerprint lookup)
+
+  // ===== SLOT CLEAR ONE =====
+  if (cmd.startsWith("slots clear ")) {
+    int slot = cmd.substring(12).toInt();
+
+    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
+      if (students[slot] != 0) {
+        int oldID = students[slot];
+        students[slot] = 0;
+        saveStudents();
+        sendOutput("Cleared slot " + String(slot) + " (Student " + String(oldID) + ")", commandId);
+      } else {
+        sendOutput("Slot already empty.", commandId);
+      }
+    } else {
+      sendOutput("Invalid slot number.", commandId);
+    }
+    return;
+  }
+
+  // ===== SLOT GET =====
+  if (cmd.startsWith("slots get ")) {
+    int slot = cmd.substring(10).toInt();
+
+    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
+      if (students[slot] != 0) {
+        sendOutput("Slot " + String(slot) + " → Student " + String(students[slot]), commandId);
+      } else {
+        sendOutput("Slot is empty.", commandId);
+      }
+    } else {
+      sendOutput("Invalid slot.", commandId);
+    }
+    return;
+  }
+
+  // ===== DELETE STUDENT =====
+  if (cmd.startsWith("student delete ")) {
+    int studentID = cmd.substring(15).toInt();
+    bool found = false;
+
+    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
+      if (students[i] == studentID) {
+        students[i] = 0;
+        saveStudents();
+        sendOutput("Deleted student " + String(studentID) + " from slot " + String(i), commandId);
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) sendOutput("Student not found.", commandId);
+    return;
+  }
+
+  // ===== TEST =====
+  if (cmd == "test scan") {
+    sendOutput("Testing fingerprint...", commandId);
+
+    int fingerID = scanFingerprint();
+    if (fingerID >= 0) {
+      sendOutput("Fingerprint detected! ID: " + String(fingerID), commandId);
+    } else {
+      sendOutput("No fingerprint detected.", commandId);
+    }
+
+    sendOutput("Tap NFC card...", commandId);
+    return;
+  }
+
+  // ===== NUMERIC =====
   bool isNumeric = true;
   for (unsigned int i = 0; i < cmd.length(); i++) {
     if (!isdigit(cmd[i])) { isNumeric = false; break; }
   }
-  
+
   if (isNumeric) {
     int studentID = cmd.toInt();
+
     if (mode == "enroll") {
       int slot = getNextFreeSlot();
+
       if (slot == -1) {
         handleStorageFull();
-        sendOutput("ERROR: No free fingerprint slots available!", commandId);
+        sendOutput("No free slots.", commandId);
         return;
       }
-      sendOutput("Enrolling Student ID " + String(studentID) + " into slot " + String(slot) + ". Waiting for fingerprint...", commandId);
+
+      // Send this BEFORE entering the blocking enrollment function so it
+      // goes out while the WS library is still in a clean state.
+      sendOutput("Starting enrollment for student " + String(studentID) + "...", commandId);
+      wsFlush();
+
       uint8_t result = getFingerprintEnroll(slot, studentID);
+
       if (result == FINGERPRINT_OK) {
-        sendOutput("✓ Successfully enrolled Student ID " + String(studentID) + " into slot " + String(slot), commandId);
+        sendOutput("Enrollment successful (slot " + String(slot) + ")", commandId);
       } else {
-        sendOutput("✗ Enrollment failed for Student ID " + String(studentID), commandId);
+        sendOutput("Enrollment failed.", commandId);
       }
-    } else if (mode == "scanner") {
-      int foundSlot = -1;
-      for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
-        if (students[i] == studentID) { foundSlot = i; break; }
-      }
-      if (foundSlot == -1) {
-        sendOutput("Student ID " + String(studentID) + " not enrolled.", commandId);
-        return;
-      }
-      sendLog(studentID, "fingerprint");
-      sendOutput("Matched slot " + String(foundSlot) + " → Logged attendance for Student " + String(studentID), commandId);
+
+    } else {
+      sendLog(studentID, "manual");
+      sendOutput("Manual log for student " + String(studentID), commandId);
     }
-  } else {
-    sendOutput("Unknown command: " + cmd, commandId);
+
+    return;
   }
+
+  // ===== UNKNOWN =====
+  sendOutput("Unknown command: " + cmd, commandId);
 }
 
 // ========== WEBSOCKET EVENT HANDLER ==========
@@ -646,10 +696,9 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     case WStype_TEXT: {
       String data = (char*)payload;
-      Serial.printf("[WS] Received: %s\n", data.c_str());
       StaticJsonDocument<256> doc;
       DeserializationError err = deserializeJson(doc, data);
-      if (err) { Serial.printf("JSON parse error: %s\n", err.c_str()); break; }
+      if (err) { break; }
       String command = doc["command"] | "";
       int commandId = doc["commandId"] | 0;
       if (command != "") handleCommand(command, commandId);
@@ -733,36 +782,21 @@ void setup() {
   }
   webSocket.onEvent(onWebSocketEvent);
   webSocket.setReconnectInterval(5000);
-
-  Serial.println("\n========== READY ==========");
-  Serial.println("Mode: " + mode);
-  Serial.println("Use web terminal to send commands:");
-  Serial.println("  - 'scanner'  : Switch to fingerprint scanner mode");
-  Serial.println("  - 'enroll'   : Switch to enrollment mode");
-  Serial.println("  - 'nfc'      : Switch to NFC scan mode");
-  Serial.println("  - 'slots show' : Display stored fingerprints");
-  Serial.println("  - 'slots reset' : Clear all fingerprints");
-  Serial.println("=========================================\n");
 }
 
 // ========== LOOP ==========
 void loop() {
     webSocket.loop();
-
-    // Only poll for NFC when in scanner mode
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
-
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi lost – reconnecting...");
         WifiConnected = false;
         connectWifi();
     }
-
     updateLedStatus();
-
     // Fingerprint scanning in scanner or enroll mode
     if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
         int fingerID = scanFingerprint();
@@ -770,11 +804,6 @@ void loop() {
             int studentID = findStudent(fingerID);
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                Serial.print("Fingerprint matched slot #");
-                Serial.print(fingerID);
-                Serial.print(" → Student ID ");
-                Serial.println(studentID);
-                
                 if (mode == "scanner") {
                     sendLog(studentID, "fingerprint");
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
@@ -783,13 +812,11 @@ void loop() {
             }
         }
     }
-
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
         sendHeartbeat();
         lastHeartbeat = millis();
     }
-
     delay(10);
 }
 
@@ -799,18 +826,9 @@ void handleNFCCardNonBlocking() {
     // Very short timeout (20 ms) – just polls, never blocks the loop
     bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
     if (success) {
-        Serial.println("✓ Found an ISO14443A card");
-        Serial.print("  UID Length: "); Serial.print(uidLength, DEC); Serial.println(" bytes");
-        Serial.print("  UID Value: "); nfc.PrintHex(uid, uidLength); Serial.println();
-
         if (uidLength == 7) {   // NTAG21x series
-            Serial.println("Reading NDEF text record...");
             String nfcText = readNFCNDEFText();   // your existing function
             if (nfcText.length() > 0) {
-                Serial.println("\n----- NFC TEXT DATA -----");
-                Serial.println(nfcText);
-                Serial.println("------------------------");
-
                 nfcText.trim();
                 bool isNumeric = true;
                 for (unsigned int i = 0; i < nfcText.length(); i++) {

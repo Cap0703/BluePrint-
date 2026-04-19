@@ -136,7 +136,8 @@ wss.on('connection', (ws, req) => {
               client.send(JSON.stringify({
                 type: "output",
                 scannerId: data.scannerId,
-                output: data.output
+                output: data.output,
+                mode: data.mode || null
               }));
               relayCount++;
             } catch (sendErr) {
