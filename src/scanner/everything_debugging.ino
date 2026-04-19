@@ -243,7 +243,9 @@ int scanFingerprint() {
   return finger.fingerID;
 }
 
-// Flush WS send buffer — call after every sendOutput inside blocking loops
+// Flush the WS send buffer — must be called after every sendOutput inside
+// blocking loops, because webSocket.sendTXT() only queues the data; the
+// library needs loop() calls to actually write it to the TCP socket.
 static inline void wsFlush() {
   for (int i = 0; i < 10; i++) { webSocket.loop(); delay(10); }
 }
@@ -251,7 +253,7 @@ static inline void wsFlush() {
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
 
-  // ── Step 1: first scan ───────────────────────────────────────────────────
+  // Step 1: prompt and wait for first scan
   sendOutput("Place finger on sensor for student " + String(sID) + "...", -1);
   wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
@@ -265,21 +267,21 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
 
   p = finger.image2Tz(1);
   if (p != FINGERPRINT_OK) {
-    sendOutput("First scan failed — try again.", -1);
+    sendOutput("First scan failed. Try again.", -1);
     wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
 
-  // ── Step 2: lift finger ──────────────────────────────────────────────────
+  // Step 2: lift finger
   sendOutput("Good scan. Lift your finger.", -1);
   wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
   while (finger.getImage() != FINGERPRINT_NOFINGER) { webSocket.loop(); }
 
-  // ── Step 3: second scan ──────────────────────────────────────────────────
+  // Step 3: second scan
   p = -1;
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
   sendOutput("Place the SAME finger again to confirm...", -1);
@@ -301,10 +303,10 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
     return p;
   }
 
-  // ── Step 4: create & store model ────────────────────────────────────────
+  // Step 4: create and store model
   p = finger.createModel();
   if (p == FINGERPRINT_ENROLLMISMATCH) {
-    sendOutput("Fingerprints did not match — please retry.", -1);
+    sendOutput("Fingerprints did not match. Please retry.", -1);
     wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
@@ -446,7 +448,7 @@ void sendOutput(String msg, int commandId) {
   if (!webSocket.isConnected()) {
     return;
   }
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["type"] = "output";
   doc["scannerId"] = scannerDbId;
   doc["output"] = msg;
@@ -651,10 +653,8 @@ void handleCommand(String cmd, int commandId) {
         return;
       }
 
-      // Send this BEFORE entering the blocking enrollment function so it
-      // goes out while the WS library is still in a clean state.
       sendOutput("Starting enrollment for student " + String(studentID) + "...", commandId);
-      wsFlush();
+      wsFlush();  // flush before entering the blocking enrollment function
 
       uint8_t result = getFingerprintEnroll(slot, studentID);
 

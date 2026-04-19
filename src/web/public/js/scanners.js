@@ -277,7 +277,7 @@ async function openTerminal(scanner) {
   appendTerminalLine('Connected to scanner terminal session.', 'system');
   connectTerminalWebSocket();
   await refreshTerminalStatus(true);
-  startTerminalPolling();
+  //startTerminalPolling();
   document.getElementById('terminalInput').focus();
 }
 
@@ -299,15 +299,6 @@ terminalSocket = new WebSocket(`${wsProtocol}${window.location.host}/ws`);
     if (String(data.scannerId) !== String(terminalState.scannerId)) return;
     if (data.type === "output") {
       appendTerminalLine(data.output, 'output');
-      terminalState.awaitingResponse = false;
-      // The scanner sends its current mode with every output — keep the pill in sync
-      if (data.mode && data.mode !== terminalState.mode) {
-        terminalState.mode = data.mode;
-      }
-      updateTerminalModeUi();
-    }
-    if (data.type === "error") {
-      appendTerminalLine(data.message || 'Scanner error.', 'error');
       terminalState.awaitingResponse = false;
       updateTerminalModeUi();
     }
@@ -334,36 +325,28 @@ function startTerminalPolling() {
   if (terminalState.poller) {
     clearInterval(terminalState.poller);
   }
-  // Poll only for heartbeat and mode — output arrives via WebSocket in real time.
-  // Using a longer interval since this is just keeping the pill and mode chip fresh.
-  terminalState.poller = setInterval(async () => {
+  terminalState.poller = setInterval(() => {
     if (!terminalState.scannerId) return;
-    try {
-      const response = await fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`);
-      const data = await response.json();
-      if (data.mode && data.mode !== terminalState.mode) {
-        terminalState.mode = data.mode;
-        updateTerminalModeUi();
-      }
-      updateHeartbeat(data.scannerLastSeenAt);
-    } catch (err) {
-      // silent — WS is primary, this is just a heartbeat fallback
-    }
-  }, 3000);
+    refreshTerminalStatus();
+  }, 1500);
 }
 
 async function refreshTerminalStatus(forceIntro = false) {
   if (!terminalState.scannerId) return;
 
   try {
-    const [modeResponse, outputResponse] = await Promise.all([
-      fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal`),
-      fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`)
-    ]);
-
-    const modeData = await modeResponse.json();
+    // Only poll the output endpoint — never the scanner-poll GET /terminal.
+    // That GET is for the physical device to pick up commands; its mode field
+    // reflects the server session default and would clobber the real enroll state.
+    const outputResponse = await fetchWithToken(
+      `/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`
+    );
     const outputData = await outputResponse.json();
-    terminalState.mode = outputData.mode || modeData.mode || terminalState.mode;
+
+    // Only overwrite mode when the scanner has actually reported one
+    if (outputData.mode) {
+      terminalState.mode = outputData.mode;
+    }
     terminalState.outputVersion = Number(outputData.outputVersion || terminalState.outputVersion || 0);
 
     updateTerminalModeUi();

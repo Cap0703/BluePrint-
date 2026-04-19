@@ -136,8 +136,7 @@ wss.on('connection', (ws, req) => {
               client.send(JSON.stringify({
                 type: "output",
                 scannerId: data.scannerId,
-                output: data.output,
-                mode: data.mode || null
+                output: data.output
               }));
               relayCount++;
             } catch (sendErr) {
@@ -1083,9 +1082,12 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
   
-  // Mode change commands (optional – can also be handled by scanner)
-  if (cmd === 'enroll' || cmd === 'scanner') {
-    session.mode = cmd === 'enroll' ? 'enroll' : 'scanner';
+  // Update server-side session mode optimistically so GET /terminal/output
+  // returns the correct mode immediately, before the scanner echoes it back.
+  if (cmd === 'set mode enroll') {
+    session.mode = 'enroll';
+  } else if (cmd === 'set mode scanner') {
+    session.mode = 'scanner';
   }
   
   const commandId = session.nextCommandId++;
