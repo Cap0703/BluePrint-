@@ -13,8 +13,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "BraveWeb";
-const char password[] = "Br@veW3b";
+const char ssid[] = "NETGEAR54";
+const char password[] = "silentbird445";
 
 WebSocketsClient webSocket;
 
@@ -67,7 +67,7 @@ void loadStudents();
 void saveStudents();
 int getNextFreeSlot();
 void handleStorageFull();
-void sendOutput(String msg, int commandId = -1);
+void sendOutput(String msg, int commandId);
 void sendHeartbeat();
 void handleCommand(String cmd, int commandId);
 void sendLog(int studentID, String method);
@@ -123,6 +123,11 @@ void initializeNFC() {
   }
   
   Serial.print("✓ Found PN5");
+  Serial.println((versiondata >> 24) & 0xFF, HEX);
+  Serial.print("  Firmware ver. ");
+  Serial.print((versiondata >> 16) & 0xFF, DEC);
+  Serial.print('.');
+  Serial.println((versiondata >> 8) & 0xFF, DEC);
   
   nfc.SAMConfig();
   nfcInitialized = true;
@@ -141,6 +146,7 @@ String readNFCNDEFText() {
       break;
     }
   }
+
   // Look for NDEF TLV (type 0x03)
   for (int i = 0; i < idx - 2; i++) {
     if (buf[i] == 0x03) {
@@ -176,6 +182,55 @@ String readNFCNDEFText() {
     }
   }
   return "";  // no valid text record found
+}
+
+void handleNFCCard() {
+  uint8_t success;
+  uint8_t uid[7];
+  uint8_t uidLength;
+
+  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
+
+  if (success) {
+    Serial.println("✓ Found an ISO14443A card");
+    Serial.print("  UID Length: ");
+    Serial.print(uidLength, DEC);
+    Serial.println(" bytes");
+    Serial.print("  UID Value: ");
+    nfc.PrintHex(uid, uidLength);
+    Serial.println();
+
+    if (uidLength == 7) {
+      Serial.println("Reading NDEF text record from NTAG2xx...");
+      String nfcText = readNFCNDEFText();
+
+      if (nfcText.length() > 0) {
+        Serial.println("\n----- NFC TEXT DATA -----");
+        Serial.println(nfcText);
+        Serial.println("------------------------");
+
+        // Try to extract numeric student ID
+        nfcText.trim();
+        bool isNumeric = true;
+        for (unsigned int i = 0; i < nfcText.length(); i++) {
+          if (!isdigit(nfcText[i])) {
+            isNumeric = false;
+            break;
+          }
+        }
+
+        if (isNumeric && nfcText.length() > 0) {
+          int studentID = nfcText.toInt();
+          sendLog(studentID, "NFC");
+          sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+        } else {
+          sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
+        }
+      } else {
+        sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+      }
+    }
+  }
 }
 
 // ========== LITTLEFS ==========
@@ -236,68 +291,86 @@ int findStudent(int fingerprintID) {
 int scanFingerprint() {
   uint8_t p = finger.getImage();
   if (p != FINGERPRINT_OK) return -1;
+  
   p = finger.image2Tz();
   if (p != FINGERPRINT_OK) return -1;
+  
   p = finger.fingerSearch();
   if (p != FINGERPRINT_OK) return -1;
+  
   return finger.fingerID;
 }
 
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
+  
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+  Serial.println("Place finger on sensor...");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) { continue; }
-    if (p != FINGERPRINT_OK) { continue; }
+    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
+    if (p != FINGERPRINT_OK) { Serial.println("\nImaging error, try again."); }
   }
   
   p = finger.image2Tz(1);
   if (p != FINGERPRINT_OK) {
-    sendOutput("Conversion failed. Try again.");
+    Serial.println("Conversion failed. Try again.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
   
-  sendOutput("\nFirst scan OK. Remove finger.");
+  Serial.println("\nFirst scan OK. Remove finger.");
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
   while (finger.getImage() != FINGERPRINT_NOFINGER);
   
   p = -1;
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
-  sendOutput("Place the SAME finger again...");
+  Serial.println("Place the SAME finger again...");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
     if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
-    if (p != FINGERPRINT_OK) { continue; }
+    if (p != FINGERPRINT_OK) { Serial.println("\nImaging error, try again."); }
   }
+  
   p = finger.image2Tz(2);
   if (p != FINGERPRINT_OK) {
+    Serial.println("Conversion failed. Try again.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+  
   p = finger.createModel();
   if (p == FINGERPRINT_ENROLLMISMATCH) {
+    Serial.println("Fingers did not match! Try again.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
   if (p != FINGERPRINT_OK) {
+    Serial.println("Model creation error.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+  
   p = finger.storeModel(slot);
   if (p != FINGERPRINT_OK) {
+    Serial.println("Failed to store model on sensor.");
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+  
   students[slot] = sID;
   saveStudents();
+  
+  Serial.print("\n✓ Enrolled Student #");
+  Serial.print(sID);
+  Serial.print(" at fingerprint slot #");
+  Serial.println(slot);
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
   delay(3000);
   return FINGERPRINT_OK;
@@ -308,12 +381,14 @@ bool signIn() {
   const int maxRetries = 3;
   int retryCount = 0;
   while (retryCount < maxRetries) {
+    Serial.printf("Auth attempt %d/%d...\n", retryCount + 1, maxRetries);
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.setTimeout(15000);
     String url = String(serverEndpoint) + "/api/scanner/auth/login";
     if (!http.begin(client, url)) {
+      Serial.println("  ✗ Failed to begin HTTP connection");
       http.end();
       delay(3000);
       retryCount++;
@@ -337,11 +412,13 @@ bool signIn() {
       http.end();
       return true;
     } else {
+      Serial.printf("  ✗ HTTP %d\n", code);
       http.end();
       delay(3000);
       retryCount++;
     }
   }
+  Serial.println("✗ Authentication failed after all retries");
   return false;
 }
 
@@ -367,6 +444,7 @@ void sendLog(int studentID, String method = "fingerprint") {
   HTTPClient http;
   http.setTimeout(10000);
   if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+    Serial.println("Failed to begin sendLog HTTP");
     http.end();
     return;
   }
@@ -386,7 +464,9 @@ void sendLog(int studentID, String method = "fingerprint") {
   serializeJson(doc, body);
   int code = http.POST(body);
   if (code == 201) {
+    Serial.printf("✓ Attendance logged via %s.\n", method.c_str());
   } else {
+    Serial.printf("✗ Log failed, HTTP %d\n", code);
   }
   http.end();
 }
@@ -398,12 +478,14 @@ void sendHeartbeat() {
   HTTPClient http;
   http.setTimeout(10000);
   if (!http.begin(client, String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat")) {
+    Serial.println("Failed to begin heartbeat HTTP");
     http.end();
     return;
   }
   http.addHeader("Authorization", "Bearer " + authToken);
   int code = http.POST("");
   if (code != 200) {
+    Serial.printf("Heartbeat failed: %d\n", code);
     authToken = "";
   }
   http.end();
@@ -411,6 +493,7 @@ void sendHeartbeat() {
 
 void sendOutput(String msg, int commandId) {
   if (!webSocket.isConnected()) {
+    Serial.println("WebSocket not connected, cannot send output.");
     return;
   }
   StaticJsonDocument<256> doc;
@@ -426,6 +509,8 @@ void sendOutput(String msg, int commandId) {
 
 // ========== COMMAND HANDLING ==========
 void handleCommand(String cmd, int commandId) {
+  Serial.printf("[CMD] Received: '%s' (id=%d)\n", cmd.c_str(), commandId);
+  
   if (cmd == "scanner") {
     mode = "scanner";
     sendOutput("Switched to FINGERPRINT SCANNER mode.", commandId);
@@ -561,9 +646,10 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     case WStype_TEXT: {
       String data = (char*)payload;
+      Serial.printf("[WS] Received: %s\n", data.c_str());
       StaticJsonDocument<256> doc;
       DeserializationError err = deserializeJson(doc, data);
-      if (err) { break; }
+      if (err) { Serial.printf("JSON parse error: %s\n", err.c_str()); break; }
       String command = doc["command"] | "";
       int commandId = doc["commandId"] | 0;
       if (command != "") handleCommand(command, commandId);
@@ -647,21 +733,36 @@ void setup() {
   }
   webSocket.onEvent(onWebSocketEvent);
   webSocket.setReconnectInterval(5000);
+
+  Serial.println("\n========== READY ==========");
+  Serial.println("Mode: " + mode);
+  Serial.println("Use web terminal to send commands:");
+  Serial.println("  - 'scanner'  : Switch to fingerprint scanner mode");
+  Serial.println("  - 'enroll'   : Switch to enrollment mode");
+  Serial.println("  - 'nfc'      : Switch to NFC scan mode");
+  Serial.println("  - 'slots show' : Display stored fingerprints");
+  Serial.println("  - 'slots reset' : Clear all fingerprints");
+  Serial.println("=========================================\n");
 }
 
 // ========== LOOP ==========
 void loop() {
     webSocket.loop();
+
+    // Only poll for NFC when in scanner mode
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
+
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi lost – reconnecting...");
         WifiConnected = false;
         connectWifi();
     }
+
     updateLedStatus();
+
     // Fingerprint scanning in scanner or enroll mode
     if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
         int fingerID = scanFingerprint();
@@ -669,6 +770,11 @@ void loop() {
             int studentID = findStudent(fingerID);
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+                Serial.print("Fingerprint matched slot #");
+                Serial.print(fingerID);
+                Serial.print(" → Student ID ");
+                Serial.println(studentID);
+                
                 if (mode == "scanner") {
                     sendLog(studentID, "fingerprint");
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
@@ -677,11 +783,13 @@ void loop() {
             }
         }
     }
+
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
         sendHeartbeat();
         lastHeartbeat = millis();
     }
+
     delay(10);
 }
 
@@ -691,9 +799,18 @@ void handleNFCCardNonBlocking() {
     // Very short timeout (20 ms) – just polls, never blocks the loop
     bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
     if (success) {
+        Serial.println("✓ Found an ISO14443A card");
+        Serial.print("  UID Length: "); Serial.print(uidLength, DEC); Serial.println(" bytes");
+        Serial.print("  UID Value: "); nfc.PrintHex(uid, uidLength); Serial.println();
+
         if (uidLength == 7) {   // NTAG21x series
+            Serial.println("Reading NDEF text record...");
             String nfcText = readNFCNDEFText();   // your existing function
             if (nfcText.length() > 0) {
+                Serial.println("\n----- NFC TEXT DATA -----");
+                Serial.println(nfcText);
+                Serial.println("------------------------");
+
                 nfcText.trim();
                 bool isNumeric = true;
                 for (unsigned int i = 0; i < nfcText.length(); i++) {
