@@ -8,6 +8,35 @@
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/navbar.js" defer></script>
     <script src="/js/scanners.js" defer></script>
+    <style>
+        .terminal-input-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+        }
+        .terminal-input-wrap input {
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            background: transparent;
+        }
+        .terminal-ghost {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            padding: inherit;          /* inherits padding from your input styles */
+            pointer-events: none;
+            white-space: pre;
+            font: inherit;             /* must match the input's font exactly */
+            color: rgba(255,255,255,0.35);
+            overflow: hidden;
+            z-index: 0;
+            /* Fine-tune these to align with your input's text: */
+            padding-left: 12px;
+            line-height: normal;
+        }
+    </style>
 </head>
 <body>
     <div id="navbar"></div>
@@ -206,7 +235,10 @@
                         <button type="button" class="soft-button" id="refreshTerminalBtn"><i class="fas fa-rotate"></i> Refresh Status</button>
                     </div>
                     <div class="terminal-input-row">
-                        <input type="text" id="terminalInput" placeholder="Enter scanner command" autocomplete="off">
+                        <div class="terminal-input-wrap">
+                            <span class="terminal-ghost" id="terminalGhost"></span>
+                            <input type="text" id="terminalInput" placeholder="Enter scanner command" autocomplete="off">
+                        </div>
                         <button type="button" class="primary-btn" id="sendTerminalBtn">Send</button>
                     </div>
                     <div class="terminal-hint" id="terminalHint">Scanner mode accepts standard commands. Switch to enroll mode to type student enrollment input directly.</div>

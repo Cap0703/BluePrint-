@@ -12,6 +12,20 @@ const terminalState = {
   awaitingResponse: false
 };
 
+const COMMANDS = [
+  "set mode scanner",
+  "set mode enroll",
+  "slots show",
+  "slots reset",
+  "reset",
+  "wifi info",
+  "restart",
+  "reauth",
+  "test scan",
+  "get student",
+  "delete student",
+];
+
 let terminalSocket = null;
 
 document.addEventListener('DOMContentLoaded', initScannersPage);
@@ -31,6 +45,34 @@ function bindScannerUi() {
     if (event.key === 'Enter') {
       event.preventDefault();
       submitTerminalInput();
+    }
+  });
+  document.getElementById('terminalInput').addEventListener('input', function () {
+    const value = this.value.toLowerCase();
+    const ghost = document.getElementById('terminalGhost');
+    const suggestion = COMMANDS.find(cmd => cmd.startsWith(value));
+
+    if (suggestion && value.length > 1) {
+      this.setAttribute("data-suggestion", suggestion);
+      // Show the typed portion invisible + the remaining suggestion visible
+      ghost.innerHTML =
+        '<span style="visibility:hidden">' + escapeHtml(this.value) + '</span>' +
+        escapeHtml(suggestion.slice(value.length));
+    } else {
+      this.removeAttribute("data-suggestion");
+      ghost.textContent = '';
+    }
+  });
+
+  document.getElementById('terminalInput').addEventListener('keydown', function (event) {
+    if (event.key === 'Tab') {
+      const suggestion = this.getAttribute('data-suggestion');
+      if (suggestion) {
+        event.preventDefault();
+        this.value = suggestion;
+        this.removeAttribute('data-suggestion');
+        document.getElementById('terminalGhost').textContent = '';
+      }
     }
   });
   document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('set mode scanner'));
@@ -343,6 +385,8 @@ async function submitTerminalInput() {
   if (!command) return;
   await sendTerminalCommand(command);
   input.value = '';
+  input.removeAttribute('data-suggestion');
+  document.getElementById('terminalGhost').textContent = '';
   input.focus();
 }
 
@@ -359,8 +403,7 @@ async function sendTerminalCommand(command) {
     });
     const data = await response.json();
     if (!response.ok) {
-      const errorData = await response.json();
-      appendTerminalLine(`Error: ${errorData.error || 'Failed to send command'}`, 'error');
+      appendTerminalLine(`Error: ${data.error || 'Failed to send command'}`, 'error');
       return;
     }
 
