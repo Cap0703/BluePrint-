@@ -1,4 +1,20 @@
 import 'dotenv/config';
+
+// ===== ADD THIS FOR DEBUGGING =====
+const DEBUG_WS = true;  // Set to false to disable verbose logging
+
+function wsLog(msg, data = null) {
+  if (DEBUG_WS) {
+    const timestamp = new Date().toISOString();
+    if (data) {
+      console.log(`[${timestamp}] [WS] ${msg}`, data);
+    } else {
+      console.log(`[${timestamp}] [WS] ${msg}`);
+    }
+  }
+}
+
+import os from 'os';
 import express from 'express';
 import { pool, initializeDatabase } from './db.js';
 import path from 'path';
@@ -11,10 +27,18 @@ import session from 'express-session';
 import cors from 'cors';
 import crypto from 'crypto';
 import { get } from 'http';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { WebSocketServer } from 'ws';
+import http from 'http';
+import https from 'https';
+
+const useHttps = process.env.USE_HTTPS === 'true';
+let server;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const scannerSockets = new Map();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -31,6 +55,22 @@ app.use(session({
   }
 }));
 
+if (useHttps) {
+  try {
+    const key = fs.readFileSync(path.join(os.homedir(), 'certs/key.pem'));
+    const cert = fs.readFileSync(path.join(os.homedir(), 'certs/cert.pem'));
+    server = https.createServer({ key, cert }, app);
+    console.log('✅ HTTPS enabled');
+  } catch (err) {
+    console.error('❌ HTTPS setup failed:', err.message);
+    server = http.createServer(app);
+  }
+} else {
+  server = http.createServer(app);
+}
+
+const wss = new WebSocketServer({ server });
+
 const CALENDAR_CACHE_FILE = path.join(__dirname, 'cache', 'calendar_cache.json');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
@@ -38,6 +78,141 @@ const MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
 let ATTENDANCE_GRACE_PERIOD_MINUTES = Number(process.env.GRACE_PERIOD_MINUTES || 10);
 
 let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
+
+const frontendSockets = new Set();
+
+wss.on('connection', (ws, req) => {
+  const connectionId = Math.random().toString(36).substr(2, 9);
+  const remoteAddress = req.socket.remoteAddress;
+  const pingInterval = setInterval(() => {
+  if (ws.readyState === ws.OPEN) ws.ping();
+  }, 30000);
+  ws.on('close', () => clearInterval(pingInterval));
+  
+  wsLog(`New connection [${connectionId}] from ${remoteAddress}`, { url: req.url });
+  
+  let scannerId = null;
+  let isFrontend = false;
+  let messageCount = 0;
+  
+  // Handle errors on the socket itself
+  ws.on('error', (err) => {
+    wsLog(`Socket error [${connectionId}]: ${err.message}`);
+  });
+  
+  // Handle incoming messages
+  ws.on('message', (message) => {
+    messageCount++;
+    wsLog(`Message #${messageCount} [${connectionId}] received, length: ${message.length} bytes`);
+    
+    try {
+      wsLog(`Parsing JSON...`);
+      const data = JSON.parse(message.toString());
+      wsLog(`Message parsed successfully`, { type: data.type, scannerId: data.scannerId });
+      
+      if (data.type === 'auth') {
+        scannerId = data.scannerId;
+        wsLog(`Auth message from scanner [${scannerId}]`, { connectionId });
+        scannerSockets.set(scannerId, ws);
+        wsLog(`Scanner socket registered`, { scannerId, totalScanners: scannerSockets.size });
+      }
+      
+      if (data.type === 'frontend') {
+        isFrontend = true;
+        ws.scannerId = data.scannerId;
+        wsLog(`Frontend connection for scanner [${data.scannerId}]`, { connectionId });
+        frontendSockets.add(ws);
+        wsLog(`Frontend socket registered`, { totalFrontends: frontendSockets.size });
+      }
+      
+      if (data.type === 'output') {
+        wsLog(`Output message from scanner [${data.scannerId}]`);
+        console.log(`[SCANNER ${data.scannerId}] ${data.output}`);
+        
+        let relayCount = 0;
+        frontendSockets.forEach(client => {
+          if (client.readyState === 1 && String(client.scannerId) === String(data.scannerId)) {
+            try {
+              client.send(JSON.stringify({
+                type: "output",
+                scannerId: data.scannerId,
+                output: data.output
+              }));
+              relayCount++;
+            } catch (sendErr) {
+              wsLog(`Error relaying to frontend: ${sendErr.message}`);
+            }
+          }
+        });
+        wsLog(`Output relayed to ${relayCount} frontend(s)`);
+      }
+
+      if (data.type === 'command') {
+        const targetScannerId = data.scannerId;
+        wsLog(`Command from frontend for scanner [${targetScannerId}]`, { command: data.command });
+        
+        const scannerSocket = scannerSockets.get(targetScannerId);
+        if (scannerSocket && scannerSocket.readyState === 1) {
+          try {
+            scannerSocket.send(JSON.stringify({
+              command: data.command,
+              commandId: data.commandId || Math.random()
+            }));
+            wsLog(`Command sent to scanner [${targetScannerId}]`);
+          } catch (sendErr) {
+            wsLog(`Error sending command to scanner: ${sendErr.message}`);
+          }
+        } else {
+          wsLog(`Scanner [${targetScannerId}] not connected or not ready`);
+          // Notify frontend that scanner is offline
+          frontendSockets.forEach(client => {
+            if (client.readyState === 1 && String(client.scannerId) === String(targetScannerId)) {
+              try {
+                client.send(JSON.stringify({
+                  type: "error",
+                  message: `Scanner ${targetScannerId} is not connected`
+                }));
+              } catch (err) {
+                wsLog(`Error notifying frontend: ${err.message}`);
+              }
+            }
+          });
+        }
+      }
+      
+    } catch (parseErr) {
+      wsLog(`ERROR: Failed to parse JSON [${connectionId}]`, { 
+        error: parseErr.message,
+        rawMessage: message.toString().substring(0, 100) 
+      });
+      try {
+        ws.close(1002, 'Invalid JSON');
+      } catch (closeErr) {
+        wsLog(`Error closing socket: ${closeErr.message}`);
+      }
+    }
+  });
+  
+  // Handle connection close
+  ws.on('close', (code, reason) => {
+    wsLog(`Connection closed [${connectionId}]`, { 
+      code, 
+      reason: reason ? reason.toString() : 'none',
+      scannerId,
+      isFrontend,
+      messagesReceived: messageCount
+    });
+    
+    if (scannerId) {
+      scannerSockets.delete(scannerId);
+      wsLog(`Scanner ${scannerId} unregistered`, { remaining: scannerSockets.size });
+    }
+    if (isFrontend) {
+      frontendSockets.delete(ws);
+      wsLog(`Frontend unregistered`, { remaining: frontendSockets.size });
+    }
+  });
+});
 
 function loadSettings() {
   try {
@@ -58,7 +233,9 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   keyGenerator: (req) => {
-    return req.body.email + '_' + req.ip;
+    // Use ipKeyGenerator for correct IPv4/IPv6 handling
+    const ip = ipKeyGenerator(req);
+    return req.body.email + '_' + ip;
   },
   message: {
     error: 'Too many login attempts. Please try again later.'
@@ -866,8 +1043,8 @@ function getScannerSession(scannerId) {
   if (!scannerTerminalSessions[scannerId]) {
     scannerTerminalSessions[scannerId] = {
       mode: 'scanner',
-      pendingCommand: null,
-      pendingCommandId: 0,
+      commandQueue: [],
+      nextCommandId: 1,
       lastOutput: '',
       lastOutputTime: null,
       outputVersion: 0,
@@ -901,17 +1078,40 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   if (typeof command !== 'string') {
     return res.status(400).json({ error: 'Command must be a string' });
   }
+  console.log(`[BACKEND] Received command for scanner ${req.params.id}:`, req.body.command);
   const session = getScannerSession(scannerId);
   const cmd = command.trim();
-  session.mode = modeFromTerminalCommand(cmd, session.mode);
-  session.pendingCommand = cmd;
-  session.pendingCommandId += 1;
-  session.commandSentTime = new Date();
+  
+  // Update server-side session mode optimistically so GET /terminal/output
+  // returns the correct mode immediately, before the scanner echoes it back.
+  if (cmd === 'set mode enroll') {
+    session.mode = 'enroll';
+  } else if (cmd === 'set mode scanner') {
+    session.mode = 'scanner';
+  }
+  
+  const commandId = session.nextCommandId++;
+  const ws = scannerSockets.get(scannerId);
+
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      command: cmd,
+      commandId
+    }));
+  } else {
+    // fallback to queue (offline scanner)
+    session.commandQueue.push({ command: cmd, commandId });
+  }
+  const MAX_QUEUE_SIZE = 5;
+  if (session.commandQueue.length > MAX_QUEUE_SIZE) {
+    session.commandQueue.shift(); // remove oldest
+  }
+  
   res.json({ 
     message: 'Command queued for scanner',
     pending: true,
     mode: session.mode,
-    commandId: session.pendingCommandId
+    commandId: commandId
   });
 });
 
@@ -919,27 +1119,41 @@ app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
   session.scannerLastSeenAt = new Date();
-  if (session.pendingCommand) {
-    const cmd = session.pendingCommand;
-    const commandId = session.pendingCommandId;
-    session.pendingCommand = null;
+  
+  if (session.commandQueue.length > 0) {
+    const next = session.commandQueue.shift();  // remove from front
     res.json({ 
-      command: cmd,
+      command: next.command,
       mode: session.mode,
-      commandId
+      commandId: next.commandId
     });
   } else {
     res.json({ 
       command: null,
       mode: session.mode,
-      commandId: session.pendingCommandId
+      commandId: session.nextCommandId  // or just 0
     });
+  }
+});
+
+app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      `UPDATE scanners SET last_sync = NOW(), scanner_status = 'online' WHERE id = $1`,
+      [id]
+    );
+    res.json({ message: 'Heartbeat received' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update heartbeat' });
   }
 });
 
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
   const { output, mode, commandId } = req.body;
+  console.log(`[SCANNER ${req.params.id}] ${output}`);
   const session = getScannerSession(scannerId);
   const now = new Date();
   session.scannerLastSeenAt = now;
@@ -1545,8 +1759,21 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 /*----------------------------------------Start Server----------------------------------------*/
 async function startServer() {
   await initializeDatabase();
+  setInterval(async () => {
+    try {
+      await pool.query(`
+        UPDATE scanners 
+        SET scanner_status = 'offline' 
+        WHERE (last_sync IS NOT NULL)
+          AND (last_sync::timestamp) < NOW() - INTERVAL '2 minutes'
+          AND scanner_status = 'online'
+      `);
+    } catch (err) {
+      console.error('Offline checker error:', err);
+    }
+  }, 30 * 1000);
   loadSettings();
-  app.listen(process.env.PORT, () => {
+  server.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
   });
 }

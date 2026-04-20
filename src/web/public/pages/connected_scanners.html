@@ -8,6 +8,35 @@
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/navbar.js" defer></script>
     <script src="/js/scanners.js" defer></script>
+    <style>
+        .terminal-input-wrap {
+            position: relative;
+            flex: 1;
+            display: flex;
+        }
+        .terminal-input-wrap input {
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            background: transparent;
+        }
+        .terminal-ghost {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            padding: inherit;          /* inherits padding from your input styles */
+            pointer-events: none;
+            white-space: pre;
+            font: inherit;             /* must match the input's font exactly */
+            color: rgba(255,255,255,0.35);
+            overflow: hidden;
+            z-index: 0;
+            /* Fine-tune these to align with your input's text: */
+            padding-left: 12px;
+            line-height: normal;
+        }
+    </style>
 </head>
 <body>
     <div id="navbar"></div>
@@ -35,22 +64,120 @@
 
             <section class="glass-panel management-card">
                 <div class="panel-title">
-                    <h2>Terminal Notes</h2>
-                    <span class="pill">Mode-aware controls</span>
+                    <h2>Terminal Commands</h2>
+                    <span class="pill">Command Reference</span>
                 </div>
+
                 <div class="split-list">
-                    <div class="list-card">
-                        <strong>Scanner mode</strong>
-                        <div class="muted">Use this for normal command entry and QR/scanner workflows.</div>
+
+                    <!-- MODES -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Modes</h3>
+
+                        <div class="list-card">
+                            <strong>set mode scanner</strong>
+                            <div class="muted">Switch scanner to normal scanning mode</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>set mode enroll</strong>
+                            <div class="muted">Switch scanner to fingerprint enrollment mode</div>
+                        </div>
                     </div>
-                    <div class="list-card">
-                        <strong>Enroll mode</strong>
-                        <div class="muted">After switching modes, the terminal prompt stays active so you can type enrollment values directly.</div>
+
+                    <!-- ENROLLMENT -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Enrollment</h3>
+
+                        <div class="list-card">
+                            <strong>[student_id]</strong>
+                            <div class="muted">
+                                In enroll mode: enroll fingerprint<br>
+                                In scanner mode: manually log attendance
+                            </div>
+                        </div>
                     </div>
-                    <div class="list-card">
-                        <strong>Live output</strong>
-                        <div class="muted">The terminal now reads incremental output instead of replaying stale scanner responses.</div>
+
+                    <!-- SLOT MANAGEMENT -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Fingerprint Slots</h3>
+
+                        <div class="list-card">
+                            <strong>slots list</strong>
+                            <div class="muted">Display all stored fingerprint slots</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>slots get [slot]</strong>
+                            <div class="muted">Show student ID assigned to a slot</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>slots clear [slot]</strong>
+                            <div class="muted">Clear a specific fingerprint slot</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>slots clear all</strong>
+                            <div class="muted">Erase all fingerprint data and mappings</div>
+                        </div>
                     </div>
+
+                    <!-- STUDENT -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Student Management</h3>
+
+                        <div class="list-card">
+                            <strong>student delete [id]</strong>
+                            <div class="muted">Remove a student and free their slot</div>
+                        </div>
+                    </div>
+
+                    <!-- SYSTEM -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">System</h3>
+
+                        <div class="list-card">
+                            <strong>status</strong>
+                            <div class="muted">Show scanner health, sensors, WiFi, and auth status</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>ping</strong>
+                            <div class="muted">Check if the scanner is responsive</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>restart</strong>
+                            <div class="muted">Reboot the scanner device</div>
+                        </div>
+
+                        <div class="list-card">
+                            <strong>reauth</strong>
+                            <div class="muted">Re-authenticate with the backend server</div>
+                        </div>
+                    </div>
+
+                    <!-- NETWORK -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Network</h3>
+
+                        <div class="list-card">
+                            <strong>wifi info</strong>
+                            <div class="muted">View SSID, IP address, and signal strength</div>
+                        </div>
+                    </div>
+
+                    <!-- TESTING -->
+                    <div class="list-section">
+                        <h3 class="list-section-title">Testing & Debug</h3>
+
+                        <div class="list-card">
+                            <strong>test scan</strong>
+                            <div class="muted">Run fingerprint test and prompt for NFC scan</div>
+                        </div>
+                    </div>
+
                 </div>
             </section>
         </section>
@@ -108,7 +235,10 @@
                         <button type="button" class="soft-button" id="refreshTerminalBtn"><i class="fas fa-rotate"></i> Refresh Status</button>
                     </div>
                     <div class="terminal-input-row">
-                        <input type="text" id="terminalInput" placeholder="Enter scanner command" autocomplete="off">
+                        <div class="terminal-input-wrap">
+                            <span class="terminal-ghost" id="terminalGhost"></span>
+                            <input type="text" id="terminalInput" placeholder="Enter scanner command" autocomplete="off">
+                        </div>
                         <button type="button" class="primary-btn" id="sendTerminalBtn">Send</button>
                     </div>
                     <div class="terminal-hint" id="terminalHint">Scanner mode accepts standard commands. Switch to enroll mode to type student enrollment input directly.</div>

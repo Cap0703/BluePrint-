@@ -13,8 +13,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "BraveWeb";
-const char password[] = "Br@veW3b";
+const char ssid[] = "NETGEAR54";
+const char password[] = "silentbird445";
 
 WebSocketsClient webSocket;
 
@@ -243,62 +243,97 @@ int scanFingerprint() {
   return finger.fingerID;
 }
 
+// Flush the WS send buffer — must be called after every sendOutput inside
+// blocking loops, because webSocket.sendTXT() only queues the data; the
+// library needs loop() calls to actually write it to the TCP socket.
+static inline void wsFlush() {
+  for (int i = 0; i < 10; i++) { webSocket.loop(); delay(10); }
+}
+
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
+
+  // Step 1: prompt and wait for first scan
+  sendOutput("Place finger on sensor for student " + String(sID) + "...", -1);
+  wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
+
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
+    webSocket.loop();
     if (p == FINGERPRINT_NOFINGER) { continue; }
     if (p != FINGERPRINT_OK) { continue; }
   }
-  
+
   p = finger.image2Tz(1);
   if (p != FINGERPRINT_OK) {
-    sendOutput("Conversion failed. Try again.");
+    sendOutput("First scan failed. Try again.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
-  
-  sendOutput("\nFirst scan OK. Remove finger.");
+
+  // Step 2: lift finger
+  sendOutput("Good scan. Lift your finger.", -1);
+  wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
-  while (finger.getImage() != FINGERPRINT_NOFINGER);
-  
+  while (finger.getImage() != FINGERPRINT_NOFINGER) { webSocket.loop(); }
+
+  // Step 3: second scan
   p = -1;
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
-  sendOutput("Place the SAME finger again...");
+  sendOutput("Place the SAME finger again to confirm...", -1);
+  wsFlush();
+
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) { Serial.print("."); continue; }
+    webSocket.loop();
+    if (p == FINGERPRINT_NOFINGER) { continue; }
     if (p != FINGERPRINT_OK) { continue; }
   }
+
   p = finger.image2Tz(2);
   if (p != FINGERPRINT_OK) {
+    sendOutput("Second scan failed. Try again.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+
+  // Step 4: create and store model
   p = finger.createModel();
   if (p == FINGERPRINT_ENROLLMISMATCH) {
+    sendOutput("Fingerprints did not match. Please retry.", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
   if (p != FINGERPRINT_OK) {
+    sendOutput("Model creation failed (error " + String(p) + ").", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+
   p = finger.storeModel(slot);
   if (p != FINGERPRINT_OK) {
+    sendOutput("Failed to store fingerprint (error " + String(p) + ").", -1);
+    wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
+
   students[slot] = sID;
   saveStudents();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
+  sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
+  wsFlush();
   delay(3000);
   return FINGERPRINT_OK;
 }
@@ -413,7 +448,7 @@ void sendOutput(String msg, int commandId) {
   if (!webSocket.isConnected()) {
     return;
   }
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["type"] = "output";
   doc["scannerId"] = scannerDbId;
   doc["output"] = msg;
@@ -426,48 +461,64 @@ void sendOutput(String msg, int commandId) {
 
 // ========== COMMAND HANDLING ==========
 void handleCommand(String cmd, int commandId) {
-  if (cmd == "scanner") {
-    mode = "scanner";
-    sendOutput("Switched to FINGERPRINT SCANNER mode.", commandId);
-    return;
-  }
-  else if (cmd == "enroll") {
-    mode = "enroll";
-    sendOutput("Switched to FINGERPRINT ENROLL mode. Send a student ID to enroll.", commandId);
-    return;
-  }
-  
-  if (cmd == "slots show") {
-    String msg = "Stored fingerprints: ";
-    int count = 0;
-    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
-      if (students[i] != 0) {
-        msg += "slot" + String(i) + "=" + String(students[i]) + " ";
-        count++;
-      }
+
+  cmd.trim();
+
+  // ===== MODE =====
+  if (cmd.startsWith("set mode ")) {
+    String newMode = cmd.substring(9);
+    newMode.trim();
+
+    if (newMode == "scanner" || newMode == "enroll") {
+      mode = newMode;
+      sendOutput("Mode set to " + newMode, commandId);
+    } else {
+      sendOutput("Invalid mode. Use 'scanner' or 'enroll'.", commandId);
     }
-    if (count == 0) msg = "No fingerprints stored.";
+    return;
+  }
+
+  // ===== STATUS =====
+  if (cmd == "status") {
+    String msg = "Status:\n";
+    msg += "Mode: " + mode + "\n";
+    msg += "WiFi: " + String(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected") + "\n";
+    msg += "IP: " + WiFi.localIP().toString() + "\n";
+    msg += "Fingerprint: " + String(fingerprintInitialized ? "OK" : "NOT FOUND") + "\n";
+    msg += "NFC: " + String(nfcInitialized ? "OK" : "NOT FOUND") + "\n";
+    msg += "Auth: " + String(authToken != "" ? "OK" : "NOT AUTHENTICATED");
     sendOutput(msg, commandId);
     return;
   }
-  else if (cmd == "slots reset") {
-    memset(students, 0, sizeof(students));
-    if (finger.emptyDatabase() == FINGERPRINT_OK) {
-      saveStudents();
-      sendOutput("All fingerprint slots have been erased.", commandId);
-    } else {
-      sendOutput("Failed to erase fingerprint sensor database.", commandId);
-    }
+
+  // ===== PING =====
+  if (cmd == "ping") {
+    sendOutput("pong", commandId);
     return;
   }
-  else if (cmd == "reset") {
-    mode = "scanner";
-    sendOutput("Scanner reset to SCANNER mode.", commandId);
+
+  // ===== WIFI =====
+  if (cmd == "wifi info") {
+    String msg = "WiFi Info:\n";
+    msg += "SSID: " + String(WiFi.SSID()) + "\n";
+    msg += "IP: " + WiFi.localIP().toString() + "\n";
+    msg += "RSSI: " + String(WiFi.RSSI()) + " dBm";
+    sendOutput(msg, commandId);
     return;
   }
-  else if (cmd == "reauth") {
+
+  // ===== RESTART =====
+  if (cmd == "restart") {
+    sendOutput("Restarting device...", commandId);
+    delay(500);
+    ESP.restart();
+  }
+
+  // ===== REAUTH =====
+  if (cmd == "reauth") {
     if (signIn()) {
       sendOutput("Re-authentication successful.", commandId);
+
       if (webSocket.isConnected()) {
         StaticJsonDocument<256> doc;
         doc["type"] = "auth";
@@ -477,68 +528,152 @@ void handleCommand(String cmd, int commandId) {
         serializeJson(doc, msg);
         webSocket.sendTXT(msg);
       }
+
     } else {
       sendOutput("Re-authentication FAILED.", commandId);
     }
     return;
   }
-  
-  if (cmd.startsWith("slots reset ")) {
-    String slotStr = cmd.substring(12);
-    slotStr.trim();
-    int slot = slotStr.toInt();
-    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
-      if (students[slot] != 0) {
-        int oldStudent = students[slot];
-        students[slot] = 0;
-        saveStudents();
-        sendOutput("Slot " + String(slot) + " (Student ID " + String(oldStudent) + ") cleared.", commandId);
-      } else {
-        sendOutput("Slot " + String(slot) + " was already empty.", commandId);
+
+  // ===== SLOT LIST =====
+  if (cmd == "slots list") {
+    String msg = "Slots:\n";
+    int count = 0;
+
+    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
+      if (students[i] != 0) {
+        msg += "Slot " + String(i) + " → " + String(students[i]) + "\n";
+        count++;
       }
+    }
+
+    if (count == 0) msg = "No fingerprints stored.";
+
+    sendOutput(msg, commandId);
+    return;
+  }
+
+  // ===== SLOT CLEAR ALL =====
+  if (cmd == "slots clear all") {
+    memset(students, 0, sizeof(students));
+
+    if (finger.emptyDatabase() == FINGERPRINT_OK) {
+      saveStudents();
+      sendOutput("All slots cleared.", commandId);
     } else {
-      sendOutput("Invalid slot number. Use 1-" + String(MAX_FINGERPRINT_SLOTS) + ".", commandId);
+      sendOutput("Failed to clear sensor.", commandId);
     }
     return;
   }
-  
-  // Handle numeric commands (student IDs for enrollment or fingerprint lookup)
+
+  // ===== SLOT CLEAR ONE =====
+  if (cmd.startsWith("slots clear ")) {
+    int slot = cmd.substring(12).toInt();
+
+    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
+      if (students[slot] != 0) {
+        int oldID = students[slot];
+        students[slot] = 0;
+        saveStudents();
+        sendOutput("Cleared slot " + String(slot) + " (Student " + String(oldID) + ")", commandId);
+      } else {
+        sendOutput("Slot already empty.", commandId);
+      }
+    } else {
+      sendOutput("Invalid slot number.", commandId);
+    }
+    return;
+  }
+
+  // ===== SLOT GET =====
+  if (cmd.startsWith("slots get ")) {
+    int slot = cmd.substring(10).toInt();
+
+    if (slot >= 1 && slot <= MAX_FINGERPRINT_SLOTS) {
+      if (students[slot] != 0) {
+        sendOutput("Slot " + String(slot) + " → Student " + String(students[slot]), commandId);
+      } else {
+        sendOutput("Slot is empty.", commandId);
+      }
+    } else {
+      sendOutput("Invalid slot.", commandId);
+    }
+    return;
+  }
+
+  // ===== DELETE STUDENT =====
+  if (cmd.startsWith("student delete ")) {
+    int studentID = cmd.substring(15).toInt();
+    bool found = false;
+
+    for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
+      if (students[i] == studentID) {
+        students[i] = 0;
+        saveStudents();
+        sendOutput("Deleted student " + String(studentID) + " from slot " + String(i), commandId);
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) sendOutput("Student not found.", commandId);
+    return;
+  }
+
+  // ===== TEST =====
+  if (cmd == "test scan") {
+    sendOutput("Testing fingerprint...", commandId);
+
+    int fingerID = scanFingerprint();
+    if (fingerID >= 0) {
+      sendOutput("Fingerprint detected! ID: " + String(fingerID), commandId);
+    } else {
+      sendOutput("No fingerprint detected.", commandId);
+    }
+
+    sendOutput("Tap NFC card...", commandId);
+    return;
+  }
+
+  // ===== NUMERIC =====
   bool isNumeric = true;
   for (unsigned int i = 0; i < cmd.length(); i++) {
     if (!isdigit(cmd[i])) { isNumeric = false; break; }
   }
-  
+
   if (isNumeric) {
     int studentID = cmd.toInt();
+
     if (mode == "enroll") {
       int slot = getNextFreeSlot();
+
       if (slot == -1) {
         handleStorageFull();
-        sendOutput("ERROR: No free fingerprint slots available!", commandId);
+        sendOutput("No free slots.", commandId);
         return;
       }
-      sendOutput("Enrolling Student ID " + String(studentID) + " into slot " + String(slot) + ". Waiting for fingerprint...", commandId);
+
+      sendOutput("Starting enrollment for student " + String(studentID) + "...", commandId);
+      wsFlush();  // flush before entering the blocking enrollment function
+
       uint8_t result = getFingerprintEnroll(slot, studentID);
+
       if (result == FINGERPRINT_OK) {
-        sendOutput("✓ Successfully enrolled Student ID " + String(studentID) + " into slot " + String(slot), commandId);
+        sendOutput("Enrollment successful (slot " + String(slot) + ")", commandId);
       } else {
-        sendOutput("✗ Enrollment failed for Student ID " + String(studentID), commandId);
+        sendOutput("Enrollment failed.", commandId);
       }
-    } else if (mode == "scanner") {
-      int foundSlot = -1;
-      for (int i = 1; i <= MAX_FINGERPRINT_SLOTS; i++) {
-        if (students[i] == studentID) { foundSlot = i; break; }
-      }
-      if (foundSlot == -1) {
-        sendOutput("Student ID " + String(studentID) + " not enrolled.", commandId);
-        return;
-      }
-      sendLog(studentID, "fingerprint");
-      sendOutput("Matched slot " + String(foundSlot) + " → Logged attendance for Student " + String(studentID), commandId);
+
+    } else {
+      sendLog(studentID, "manual");
+      sendOutput("Manual log for student " + String(studentID), commandId);
     }
-  } else {
-    sendOutput("Unknown command: " + cmd, commandId);
+
+    return;
   }
+
+  // ===== UNKNOWN =====
+  sendOutput("Unknown command: " + cmd, commandId);
 }
 
 // ========== WEBSOCKET EVENT HANDLER ==========

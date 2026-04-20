@@ -12,6 +12,22 @@ const terminalState = {
   awaitingResponse: false
 };
 
+const COMMANDS = [
+  "set mode scanner",
+  "set mode enroll",
+  "slots show",
+  "slots reset",
+  "reset",
+  "wifi info",
+  "restart",
+  "reauth",
+  "test scan",
+  "get student",
+  "delete student",
+];
+
+let terminalSocket = null;
+
 document.addEventListener('DOMContentLoaded', initScannersPage);
 
 function initScannersPage() {
@@ -31,8 +47,19 @@ function bindScannerUi() {
       submitTerminalInput();
     }
   });
-  document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('scanner'));
-  document.getElementById('enrollModeBtn').addEventListener('click', () => sendTerminalCommand('enroll'));
+  document.getElementById('terminalInput').addEventListener('input', function () {
+    const value = this.value.toLowerCase();
+
+    const suggestion = COMMANDS.find(cmd => cmd.startsWith(value));
+
+    if (suggestion && value.length > 1) {
+      this.setAttribute("data-suggestion", suggestion);
+    } else {
+      this.removeAttribute("data-suggestion");
+    }
+  });
+  document.getElementById('scannerModeBtn').addEventListener('click', () => sendTerminalCommand('set mode scanner'));
+  document.getElementById('enrollModeBtn').addEventListener('click', () => sendTerminalCommand('set mode enroll'));
   document.getElementById('refreshTerminalBtn').addEventListener('click', refreshTerminalStatus);
 
   window.addEventListener('click', event => {
@@ -248,15 +275,47 @@ async function openTerminal(scanner) {
   document.getElementById('terminalSubtitle').textContent = terminalState.scannerLabel;
   document.getElementById('terminalModal').style.display = 'flex';
   appendTerminalLine('Connected to scanner terminal session.', 'system');
+  connectTerminalWebSocket();
   await refreshTerminalStatus(true);
-  startTerminalPolling();
+  //startTerminalPolling();
   document.getElementById('terminalInput').focus();
+}
+
+function connectTerminalWebSocket() {
+  if (terminalSocket) {
+    terminalSocket.close();
+  }
+const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+terminalSocket = new WebSocket(`${wsProtocol}${window.location.host}/ws`);
+  terminalSocket.onopen = () => {
+    console.log("Frontend WS connected");
+    terminalSocket.send(JSON.stringify({
+      type: "frontend",
+      scannerId: terminalState.scannerId
+    }));
+  };
+  terminalSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (String(data.scannerId) !== String(terminalState.scannerId)) return;
+    if (data.type === "output") {
+      appendTerminalLine(data.output, 'output');
+      terminalState.awaitingResponse = false;
+      updateTerminalModeUi();
+    }
+  };
+  terminalSocket.onclose = (event) => {
+    console.log("Frontend WS closed", event.code, event.reason);
+  };
 }
 
 function closeTerminal() {
   document.getElementById('terminalModal').style.display = 'none';
   if (terminalState.poller) {
     clearInterval(terminalState.poller);
+  }
+  if (terminalSocket) {
+    terminalSocket.close();
+    terminalSocket = null;
   }
   terminalState.poller = null;
   terminalState.scannerId = null;
@@ -276,14 +335,18 @@ async function refreshTerminalStatus(forceIntro = false) {
   if (!terminalState.scannerId) return;
 
   try {
-    const [modeResponse, outputResponse] = await Promise.all([
-      fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal`),
-      fetchWithToken(`/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`)
-    ]);
-
-    const modeData = await modeResponse.json();
+    // Only poll the output endpoint — never the scanner-poll GET /terminal.
+    // That GET is for the physical device to pick up commands; its mode field
+    // reflects the server session default and would clobber the real enroll state.
+    const outputResponse = await fetchWithToken(
+      `/api/scanners/${terminalState.scannerId}/terminal/output?afterVersion=${terminalState.outputVersion}`
+    );
     const outputData = await outputResponse.json();
-    terminalState.mode = outputData.mode || modeData.mode || terminalState.mode;
+
+    // Only overwrite mode when the scanner has actually reported one
+    if (outputData.mode) {
+      terminalState.mode = outputData.mode;
+    }
     terminalState.outputVersion = Number(outputData.outputVersion || terminalState.outputVersion || 0);
 
     updateTerminalModeUi();
@@ -325,7 +388,7 @@ async function sendTerminalCommand(command) {
     });
     const data = await response.json();
     if (!response.ok) {
-      appendTerminalLine(data.error || 'Unable to send command.', 'error');
+      appendTerminalLine(`Error: ${data.error || 'Failed to send command'}`, 'error');
       return;
     }
 
