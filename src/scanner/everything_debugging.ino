@@ -335,6 +335,7 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
   wsFlush();
   delay(3000);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
   return FINGERPRINT_OK;
 }
 
@@ -807,6 +808,8 @@ void loop() {
                 if (mode == "scanner") {
                     sendLog(studentID, "fingerprint");
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+                    delay(200);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 }
                 delay(3000);
             }
@@ -837,7 +840,10 @@ void handleNFCCardNonBlocking() {
                 if (isNumeric && nfcText.length() > 0) {
                     int studentID = nfcText.toInt();
                     sendLog(studentID, "NFC");
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                     sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+                    delay(2000);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 } else {
                     sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }

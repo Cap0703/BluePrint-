@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 // ===== ADD THIS FOR DEBUGGING =====
 const DEBUG_WS = true;  // Set to false to disable verbose logging
-
+process.env.TZ = "America/Los_Angeles";
 function wsLog(msg, data = null) {
   if (DEBUG_WS) {
     const timestamp = new Date().toISOString();
