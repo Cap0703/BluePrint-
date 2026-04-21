@@ -624,6 +624,19 @@ function convertTo24HourFormat(time12h) {
   return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
 }
 
+function convertToCsv(logs) {
+  const header = ['Date Scanned', 'Time Scanned', 'Student ID', 'Period', 'Status'];
+  const rows = logs.map(log => [
+    log.date_scanned,
+    convertTo24HourFormat(log.time_scanned),
+    log.student_id,
+    log.period,
+    log.status
+  ]);
+  const csvContent = [header, ...rows].map(e => e.join(",")).join("\n");
+  return csvContent;
+}
+
 
 
 /*-------------------------------------- Encryption Functions --------------------------------------*/
@@ -1508,6 +1521,23 @@ app.get('/api/logs', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching logs:', err);
     res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+app.get('/api/logs/csv', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM logs
+      ORDER BY date_scanned DESC, time_scanned DESC
+    `);
+    const csv = convertToCsv(result.rows);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=logs.csv');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error fetching logs for CSV:', err);
+    res.status(500).json({ error: 'Failed to fetch logs for CSV' });
   }
 });
 

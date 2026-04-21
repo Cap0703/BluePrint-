@@ -32,6 +32,7 @@ function bindLogUi() {
   document.getElementById('logPeriodFilter').addEventListener('change', applyLogFilters);
   document.getElementById('assignPeriodsBtn').addEventListener('click', assignPeriodsToLogs);
   document.getElementById('assignStatusesBtn').addEventListener('click', assignStatusesToLogs);
+  document.getElementById('csv').addEventListener('click', getLogsCsv);
 }
 
 async function fetchLogs() {
@@ -258,4 +259,28 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function getLogsCsv() {
+  const token = localStorage.getItem('auth_token');
+  fetch('/api/logs/csv', {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  })
+  .then(response => response.blob())
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = 'logs.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+  })
+  .catch(error => {
+    console.error('Error downloading CSV:', error);
+    alert('Failed to download CSV');
+  });
 }
