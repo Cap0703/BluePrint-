@@ -897,22 +897,7 @@ void setup() {
   // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
   // so offline logs queued before sync will just have fallback timestamps.
 
-  Serial.println("[INIT] Authenticating with server...");
-  if (!signIn()) {
-    Serial.println("[ERROR] Fatal: cannot authenticate with server.");
-    while (1) delay(1000);
-  }
-  flushOfflineLogs();
-
-  Serial.println("[INIT] Connecting to WebSocket...");
-  webSocket.beginSSL(wsHost, wsPort, wsPath);
-  delay(500);
-  for (int i = 0; i < 5; i++) {
-      webSocket.loop();
-      delay(10);
-  }
-  webSocket.onEvent(onWebSocketEvent);
-  webSocket.setReconnectInterval(5000);
+  Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
 // ========== LOOP ==========
@@ -949,11 +934,15 @@ void loop() {
             // Handle post-connection auth and flush outside of connectWifi
             // so it doesn't block anything
             if (wifiJustConnected) {
-                wifiJustConnected = false;
-                if (signIn()) {
-                    flushOfflineLogs();
-                }
-            }
+              wifiJustConnected = false;
+              if (signIn()) {
+                  flushOfflineLogs();
+              }
+              // Start WebSocket now that WiFi and auth are ready
+              webSocket.beginSSL(wsHost, wsPort, wsPath);
+              webSocket.onEvent(onWebSocketEvent);
+              webSocket.setReconnectInterval(5000);
+          }
         }
     }
     updateLedStatus();
