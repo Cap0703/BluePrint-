@@ -82,7 +82,11 @@
             for (let hour = CALENDAR_START_HOUR; hour < CALENDAR_END_HOUR; hour += 1) {
                 const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
                 const ampm = hour >= 12 ? 'PM' : 'AM';
-                html += `<div class="time-slot"><div class="time-label">${displayHour}:00 ${ampm}</div></div>`;
+                html += `
+                    <div class="time-slot" style="top: ${minuteToCalendarOffset(hour * 60)}px;">
+                        <div class="time-label">${displayHour}:00 ${ampm}</div>
+                    </div>
+                `;
             }
             container.innerHTML = html;
         }

@@ -1967,9 +1967,10 @@ tr:hover {
 }
 
 .time-slot {
-    height: 60px;
-    position: relative;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
 }
 
 .time-label {
@@ -2006,19 +2007,22 @@ tr:hover {
     position: absolute;
     left: 12px;
     right: 12px;
+    margin: 0;
     background: linear-gradient(180deg, rgba(78, 184, 255, 0.9), rgba(46, 130, 214, 0.88));
     border-left: 4px solid #d7f2ff;
-    border-radius: 16px;
+    border-top: 1px solid rgba(238, 249, 255, 0.92);
+    border-bottom: 1px solid rgba(13, 55, 95, 0.82);
+    border-radius: 0 12px 12px 0;
     padding: 0.9rem 1rem;
     overflow: hidden;
     transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
-    box-shadow: 0 12px 26px rgba(3, 14, 24, 0.22);
+    box-shadow: 8px 0 22px rgba(3, 14, 24, 0.18);
 }
 
 .event-item:hover {
     transform: translateX(4px);
     filter: brightness(1.03);
-    box-shadow: 0 16px 30px rgba(3, 14, 24, 0.28);
+    box-shadow: 10px 0 26px rgba(3, 14, 24, 0.22);
 }
 
 .event-time {
@@ -2039,7 +2043,9 @@ tr:hover {
 .current-period {
     background: linear-gradient(180deg, rgba(59, 196, 138, 0.94), rgba(22, 130, 92, 0.94));
     border-left-color: #f2fff8;
-    box-shadow: 0 0 0 1px rgba(195, 255, 223, 0.2), 0 16px 32px rgba(10, 55, 39, 0.24);
+    border-top-color: rgba(232, 255, 242, 0.96);
+    border-bottom-color: rgba(8, 74, 48, 0.9);
+    box-shadow: 0 0 0 1px rgba(195, 255, 223, 0.2), 10px 0 26px rgba(10, 55, 39, 0.18);
 }
 
 .current-time-indicator {
@@ -2081,14 +2087,14 @@ tr:hover {
     position: absolute;
     left: 0;
     right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .half-hour-marker {
     position: absolute;
     left: 0;
     right: 0;
-    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
 }
 
 .loading-state {
