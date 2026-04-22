@@ -292,7 +292,7 @@ function buildCourseScopeKey(room, period) {
 }
 
 async function applyTeacherLogScope(rawLog, user) {
-  if (!user || user.role === 'administrator') {
+  if (!user || user.role === 'administrator' || user.role === 'scanner' || user.scanner_id) {
     return { ...(rawLog || {}) };
   }
 
@@ -1438,7 +1438,8 @@ app.post('/api/scanner/auth/login', async (req, res) => {
     const token = jwt.sign(
       { 
         id: scanner.id,
-        scanner_id: scanner.scanner_id
+        scanner_id: scanner.scanner_id,
+        role: 'scanner'
       },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
@@ -1446,6 +1447,7 @@ app.post('/api/scanner/auth/login', async (req, res) => {
     req.session.user = {
       id: scanner.id,
       scanner_id: scanner.scanner_id,
+      role: 'scanner',
       token: token
     };
     res.json({ 
@@ -1453,7 +1455,8 @@ app.post('/api/scanner/auth/login', async (req, res) => {
       token: token,
       user: {
         id: scanner.id,
-        scanner_id: scanner.scanner_id
+        scanner_id: scanner.scanner_id,
+        role: 'scanner'
       }
     });
   } catch (err) {
