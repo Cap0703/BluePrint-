@@ -412,6 +412,15 @@ void sendLog(int studentID, String method) {
   if (WiFi.status() != WL_CONNECTED || authToken == "") {
     Serial.println("[LOG] Offline -- queuing log locally.");
     queueOfflineLog(studentID, method);
+    // Flash purple twice to show the scan was queued offline
+    for (int i = 0; i < 2; i++) {
+      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_PURPLE);
+      delay(200);
+      finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, 0);
+      delay(150);
+    }
+    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_RED);
+    lastLedColor = FINGERPRINT_LED_RED;
     return;
   }
 
@@ -904,6 +913,13 @@ void setup() {
 
   Serial.println("[INIT] Syncing time with NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  // Wait for NTP to actually sync before flushing so timestamps are correct
+  struct tm timeinfo;
+  int ntpRetries = 0;
+  while (!getLocalTime(&timeinfo) && ntpRetries < 20) {
+    delay(500);
+    ntpRetries++;
+  }
 
   Serial.println("[INIT] Authenticating with server...");
   if (!signIn()) {
