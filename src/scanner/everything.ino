@@ -43,6 +43,18 @@ Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
+// ========== SD HARDWARE ==========
+
+#define OFFLINE_LOGS_FILE "/offline_logs.bin"
+#define MAX_OFFLINE_LOGS 200
+
+struct OfflineLog {
+  int studentID;
+  char method[16];
+  char date[11];
+  char time[9];
+};
+
 // ========== GLOBALS ==========
 String authToken = "";
 String scannerDbId = "";
@@ -83,6 +95,8 @@ int scanFingerprint();
 int findStudent(int fingerprintID);
 void handleNFCCard();
 String readNFCASCII();
+void queueOfflineLog(int studentID, String method);
+void flushOfflineLogs();
 
 // ========== FINGERPRINT ==========
 void initializeFingerprint() {
@@ -394,33 +408,47 @@ void getDateTime(String &dateStr, String &timeStr) {
   timeStr = String(timeBuffer);
 }
 
-void sendLog(int studentID, String method = "fingerprint") {
-  if (authToken == "") return;
+void sendLog(int studentID, String method) {
+  if (WiFi.status() != WL_CONNECTED || authToken == "") {
+    Serial.println("[LOG] Offline -- queuing log locally.");
+    queueOfflineLog(studentID, method);
+    return;
+  }
+
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(10000);
+
   if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+    Serial.println("[LOG] http.begin failed -- queuing offline.");
+    queueOfflineLog(studentID, method);
     http.end();
     return;
   }
+
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
+
   String dateStr, timeStr;
   getDateTime(dateStr, timeStr);
+
   StaticJsonDocument<256> doc;
   doc["scanner_location"] = SCANNER_LOCATION;
-  doc["scanner_id"] = SCANNER_ID;
-  doc["student_id"] = studentID;
-  doc["date_scanned"] = dateStr;
-  doc["time_scanned"] = timeStr;
-  doc["status"] = "present";
-  doc["method"] = method;  // fingerprint, NFC, etc.
+  doc["scanner_id"]       = SCANNER_ID;
+  doc["student_id"]       = studentID;
+  doc["date_scanned"]     = dateStr;
+  doc["time_scanned"]     = timeStr;
+  doc["status"]           = "present";
+  doc["method"]           = method;
+
   String body;
   serializeJson(doc, body);
+
   int code = http.POST(body);
-  if (code == 201) {
-  } else {
+  if (code != 201) {
+    Serial.printf("[LOG] Server returned %d -- queuing offline.\n", code);
+    queueOfflineLog(studentID, method);
   }
   http.end();
 }
@@ -730,12 +758,163 @@ void connectWifi() {
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
     WifiConnected = true;
+    if (authToken != "") flushOfflineLogs();
     updateLedStatus();
     delay(2000);
   } else {
     Serial.println("\nWiFi connection FAILED!");
     WifiConnected = false;
     updateLedStatus();
+  }
+}
+
+void queueOfflineLog(int studentID, String method) {
+  String dateStr, timeStr;
+  getDateTime(dateStr, timeStr);
+
+  OfflineLog entry;
+  entry.studentID = studentID;
+  strncpy(entry.method, method.c_str(), sizeof(entry.method) - 1);
+  entry.method[sizeof(entry.method) - 1] = '\0';
+  strncpy(entry.date, dateStr.c_str(), sizeof(entry.date) - 1);
+  entry.date[sizeof(entry.date) - 1] = '\0';
+  strncpy(entry.time, timeStr.c_str(), sizeof(entry.time) - 1);
+  entry.time[sizeof(entry.time) - 1] = '\0';
+
+  int count = 0;
+  File rf = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (rf) {
+    count = rf.size() / sizeof(OfflineLog);
+    rf.close();
+  }
+
+  if (count >= MAX_OFFLINE_LOGS) {
+    Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
+    OfflineLog buf[MAX_OFFLINE_LOGS];
+    File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+    if (r2) { r2.read((uint8_t*)buf, sizeof(buf)); r2.close(); }
+    File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
+    if (w2) {
+      w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
+      w2.write((uint8_t*)&entry, sizeof(OfflineLog));
+      w2.close();
+    }
+    return;
+  }
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_APPEND);
+  if (!f) { Serial.println("[OFFLINE] ERROR: Could not open offline log file."); return; }
+  f.write((uint8_t*)&entry, sizeof(OfflineLog));
+  f.close();
+  Serial.printf("[OFFLINE] Queued log: student=%d method=%s date=%s time=%s\n",
+                studentID, method.c_str(), dateStr.c_str(), timeStr.c_str());
+}
+
+// ========== Offline Logging ==========
+
+void queueOfflineLog(int studentID, String method) {
+  String dateStr, timeStr;
+  getDateTime(dateStr, timeStr);
+
+  OfflineLog entry;
+  entry.studentID = studentID;
+  strncpy(entry.method, method.c_str(), sizeof(entry.method) - 1);
+  entry.method[sizeof(entry.method) - 1] = '\0';
+  strncpy(entry.date, dateStr.c_str(), sizeof(entry.date) - 1);
+  entry.date[sizeof(entry.date) - 1] = '\0';
+  strncpy(entry.time, timeStr.c_str(), sizeof(entry.time) - 1);
+  entry.time[sizeof(entry.time) - 1] = '\0';
+
+  int count = 0;
+  File rf = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (rf) {
+    count = rf.size() / sizeof(OfflineLog);
+    rf.close();
+  }
+
+  if (count >= MAX_OFFLINE_LOGS) {
+    Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
+    OfflineLog buf[MAX_OFFLINE_LOGS];
+    File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+    if (r2) { r2.read((uint8_t*)buf, sizeof(buf)); r2.close(); }
+    File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
+    if (w2) {
+      w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
+      w2.write((uint8_t*)&entry, sizeof(OfflineLog));
+      w2.close();
+    }
+    return;
+  }
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_APPEND);
+  if (!f) { Serial.println("[OFFLINE] ERROR: Could not open offline log file."); return; }
+  f.write((uint8_t*)&entry, sizeof(OfflineLog));
+  f.close();
+  Serial.printf("[OFFLINE] Queued log: student=%d method=%s date=%s time=%s\n",
+                studentID, method.c_str(), dateStr.c_str(), timeStr.c_str());
+}
+
+void flushOfflineLogs() {
+  if (!LittleFS.exists(OFFLINE_LOGS_FILE)) return;
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (!f) return;
+
+  int count = f.size() / sizeof(OfflineLog);
+  if (count == 0) { f.close(); return; }
+
+  Serial.printf("[OFFLINE] Flushing %d queued log(s) to server...\n", count);
+  sendOutput("Flushing " + String(count) + " offline log(s)...", -1);
+
+  int sent = 0, failed = 0;
+
+  for (int i = 0; i < count; i++) {
+    OfflineLog entry;
+    f.read((uint8_t*)&entry, sizeof(OfflineLog));
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(10000);
+
+    if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+      failed++; http.end(); continue;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + authToken);
+
+    StaticJsonDocument<256> doc;
+    doc["scanner_location"] = SCANNER_LOCATION;
+    doc["scanner_id"]       = SCANNER_ID;
+    doc["student_id"]       = entry.studentID;
+    doc["date_scanned"]     = entry.date;
+    doc["time_scanned"]     = entry.time;
+    doc["status"]           = "present";
+    doc["method"]           = entry.method;
+
+    String body;
+    serializeJson(doc, body);
+
+    int code = http.POST(body);
+    if (code == 201) { sent++; }
+    else {
+      Serial.printf("[OFFLINE] Failed for student %d (HTTP %d)\n", entry.studentID, code);
+      failed++;
+    }
+    http.end();
+    webSocket.loop();
+  }
+
+  f.close();
+
+  if (failed == 0) {
+    LittleFS.remove(OFFLINE_LOGS_FILE);
+    Serial.println("[OFFLINE] All queued logs sent. File cleared.");
+    sendOutput("All offline logs flushed successfully.", -1);
+  } else {
+    Serial.printf("[OFFLINE] %d sent, %d failed -- will retry on next reconnect.\n", sent, failed);
+    sendOutput(String(sent) + " sent, " + String(failed) + " failed -- will retry.", -1);
   }
 }
 
@@ -773,6 +952,7 @@ void setup() {
     Serial.println("[ERROR] Fatal: cannot authenticate with server.");
     while (1) delay(1000);
   }
+  flushOfflineLogs();
 
   Serial.println("[INIT] Connecting to WebSocket...");
   webSocket.beginSSL(wsHost, wsPort, wsPath);
@@ -806,10 +986,10 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                    sendLog(studentID, "fingerprint");
-                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  sendLog(studentID, "fingerprint");
+                  sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+                  delay(1000);
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 }
                 delay(3000);
             }
@@ -817,8 +997,8 @@ void loop() {
     }
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
-        sendHeartbeat();
-        lastHeartbeat = millis();
+      sendHeartbeat();
+      lastHeartbeat = millis();
     }
     delay(10);
 }
@@ -835,20 +1015,20 @@ void handleNFCCardNonBlocking() {
                 nfcText.trim();
                 bool isNumeric = true;
                 for (unsigned int i = 0; i < nfcText.length(); i++) {
-                    if (!isdigit(nfcText[i])) { isNumeric = false; break; }
+                  if (!isdigit(nfcText[i])) { isNumeric = false; break; }
                 }
                 if (isNumeric && nfcText.length() > 0) {
-                    int studentID = nfcText.toInt();
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                    sendLog(studentID, "NFC");
-                    sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  int studentID = nfcText.toInt();
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+                  sendLog(studentID, "NFC");
+                  sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+                  delay(1000);
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 } else {
-                    sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
+                  sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
             } else {
-                sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+              sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
             }
         }
         // Optional: add a short delay to avoid reading the same card repeatedly
