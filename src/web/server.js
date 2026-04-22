@@ -243,6 +243,132 @@ function getLosAngelesDateString(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+async function getVisibleCoursesForUser(user) {
+  if (!user) return [];
+  if (user.role === 'administrator') {
+    const result = await pool.query('SELECT id, room, period FROM courses ORDER BY period ASC, room ASC');
+    return result.rows;
+  }
+
+  const resolvedUser = await resolveUserCourseScope(user);
+  const assignedCourseIds = Array.isArray(resolvedUser.courses)
+    ? resolvedUser.courses.map(Number).filter(Number.isInteger)
+    : [];
+
+  if (!assignedCourseIds.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    'SELECT id, room, period FROM courses WHERE id = ANY($1::int[]) ORDER BY period ASC, room ASC',
+    [assignedCourseIds]
+  );
+  return result.rows;
+}
+
+async function resolveUserCourseScope(user) {
+  if (!user?.id) {
+    return user || {};
+  }
+
+  const result = await pool.query(
+    'SELECT id, role, courses FROM users WHERE id = $1',
+    [user.id]
+  );
+
+  if (!result.rows.length) {
+    return user;
+  }
+
+  return {
+    ...user,
+    role: result.rows[0].role || user.role,
+    courses: Array.isArray(result.rows[0].courses) ? result.rows[0].courses : []
+  };
+}
+
+function buildCourseScopeKey(room, period) {
+  return [String(room || '').trim(), String(period || '').trim()].join('__');
+}
+
+async function applyTeacherLogScope(rawLog, user) {
+  if (!user || user.role === 'administrator') {
+    return { ...(rawLog || {}) };
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  if (!visibleCourses.length) {
+    throw new Error('No class assignments are linked to this teacher account');
+  }
+
+  const requestedRoom = normalizeOptionalValue(rawLog?.scanner_location);
+  const requestedPeriod = normalizeOptionalValue(rawLog?.period);
+  let matchedCourse = null;
+
+  if (requestedRoom && requestedPeriod) {
+    matchedCourse = visibleCourses.find(course => buildCourseScopeKey(course.room, course.period) === buildCourseScopeKey(requestedRoom, requestedPeriod));
+  } else if (visibleCourses.length === 1) {
+    [matchedCourse] = visibleCourses;
+  } else {
+    throw new Error('Room and period are required for teachers assigned to multiple classes');
+  }
+
+  if (!matchedCourse) {
+    throw new Error('This log is outside the teacher\'s assigned room and period');
+  }
+
+  return {
+    ...(rawLog || {}),
+    scanner_location: matchedCourse.room,
+    period: matchedCourse.period,
+    scanner_id: normalizeOptionalValue(rawLog?.scanner_id) || `TEACHER-${user.id}`
+  };
+}
+
+async function assertUserCanManageLog(user, logId) {
+  const result = await pool.query('SELECT id, scanner_location, period FROM logs WHERE id = $1', [logId]);
+  if (!result.rows.length) {
+    const error = new Error('Log entry not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!user || user.role === 'administrator') {
+    return result.rows[0];
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  const allowedKeys = new Set(visibleCourses.map(course => buildCourseScopeKey(course.room, course.period)));
+  const logKey = buildCourseScopeKey(result.rows[0].scanner_location, result.rows[0].period);
+
+  if (!allowedKeys.has(logKey)) {
+    const error = new Error('You can only manage logs for your assigned classes');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return result.rows[0];
+}
+
+function filterLogsForCourses(logs, courses) {
+  const allowedKeys = new Set(courses.map(course => buildCourseScopeKey(course.room, course.period)));
+  return logs.filter(log => allowedKeys.has(buildCourseScopeKey(log.scanner_location, log.period)));
+}
+
+async function getVisibleLogsForUser(user) {
+  const result = await pool.query(`
+    SELECT *
+    FROM logs
+  `);
+
+  if (!user || user.role === 'administrator') {
+    return result.rows.sort(compareLogsChronologically);
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  return filterLogsForCourses(result.rows, visibleCourses).sort(compareLogsChronologically);
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -730,6 +856,26 @@ function parseCourseAssignments(courses) {
     .filter(course => Number.isInteger(course) && course > 0);
 }
 
+async function sanitizeCourseAssignments(courses) {
+  const parsedCourseIds = [...new Set(parseCourseAssignments(courses))];
+  if (!parsedCourseIds.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    'SELECT id FROM courses WHERE id = ANY($1::int[])',
+    [parsedCourseIds]
+  );
+
+  const validCourseIds = new Set(
+    result.rows
+      .map(row => Number(row.id))
+      .filter(Number.isInteger)
+  );
+
+  return parsedCourseIds.filter(id => validCourseIds.has(id));
+}
+
 async function createStudentAccount(payload) {
   let { student_id, first_name, last_name, password, uuid } = payload;
   student_id = normalizeRequiredString(student_id, 'Student ID');
@@ -775,7 +921,7 @@ async function createWebUserAccount(payload) {
     throw new Error('Role must be teacher or administrator');
   }
 
-  const courseArray = role === 'teacher' ? parseCourseAssignments(courses) : [];
+  const courseArray = role === 'teacher' ? await sanitizeCourseAssignments(courses) : [];
   const hashedPassword = await bcryptjs.hash(password, 10);
   const result = await pool.query(`
     INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
@@ -1510,7 +1656,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         email: user.email, 
         role: user.role,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        courses: Array.isArray(user.courses) ? user.courses : []
       },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
@@ -1521,6 +1668,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       role: user.role,
       firstName: user.first_name,
       lastName: user.last_name,
+      courses: Array.isArray(user.courses) ? user.courses : [],
       token: token
     };
     res.json({ 
@@ -1531,7 +1679,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         email: user.email,
         role: user.role,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        courses: Array.isArray(user.courses) ? user.courses : []
       }
     });
   } catch (err) {
@@ -1627,6 +1776,15 @@ app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
 app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { email, first_name, last_name, password, role, courses } = req.body;
   try {
+    let existingUserRole = null;
+    if (courses !== undefined && role === undefined) {
+      const existingUser = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+      if (!existingUser.rows.length) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      existingUserRole = existingUser.rows[0].role;
+    }
+
     let query = 'UPDATE users SET ';
     let params = [];
     let paramCount = 1;
@@ -1660,7 +1818,10 @@ app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
       paramCount++;
     }
     if (courses !== undefined) {
-      const courseArray = role === 'teacher' && courses ? courses : [];
+      const effectiveRole = role !== undefined ? role : existingUserRole;
+      const courseArray = effectiveRole === 'teacher'
+        ? await sanitizeCourseAssignments(courses)
+        : [];
       query += `courses = $${paramCount}, `;
       params.push(courseArray);
       paramCount++;
@@ -1750,8 +1911,8 @@ app.post('/api/courses', verifyToken, requireRole('administrator'), async (req, 
 
 app.get('/api/courses', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, room, period FROM courses ORDER BY period ASC, room ASC');
-    res.json(result.rows);
+    const courses = await getVisibleCoursesForUser(req.user);
+    res.json(courses);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch courses' });
@@ -1792,16 +1953,41 @@ app.get('/api/calendar/today', async (req, res) => {
   }
 });
 
+app.put('/api/courses/:id', verifyToken, requireRole('administrator'), async (req, res) => {
+  const { room, period } = req.body;
+  if (!room || !period) {
+    return res.status(400).json({ error: 'Room and period are required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE courses
+      SET room = $1, period = $2
+      WHERE id = $3
+      RETURNING id, room, period
+    `, [room, period, req.params.id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'This course already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update course' });
+  }
+});
+
 
 
 /*-------Log Endpoints-------*/
 app.get('/api/logs', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-    `);
-    res.json(result.rows.sort(compareLogsChronologically));
+    const logs = await getVisibleLogsForUser(req.user);
+    res.json(logs);
   } catch (err) {
     console.error('Error fetching logs:', err);
     res.status(500).json({ error: 'Failed to fetch logs' });
@@ -1810,11 +1996,8 @@ app.get('/api/logs', verifyToken, async (req, res) => {
 
 app.get('/api/logs/csv', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-    `);
-    const csv = convertToCsv(result.rows.sort(compareLogsChronologically));
+    const logs = await getVisibleLogsForUser(req.user);
+    const csv = convertToCsv(logs);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=logs.csv');
     res.send(csv);
@@ -1826,14 +2009,15 @@ app.get('/api/logs/csv', verifyToken, async (req, res) => {
 
 app.post('/api/logs', verifyToken, async (req, res) => {
   try {
-    const preparedLog = await buildPreparedLogEntry(req.body);
+    const scopedPayload = await applyTeacherLogScope(req.body, req.user);
+    const preparedLog = await buildPreparedLogEntry(scopedPayload);
     await insertPreparedLogEntry(preparedLog);
     await assignPeriodsToLogs();
     await assignStatusesToLogs();
     res.status(201).json({ message: 'Log entry created successfully' });
   } catch (err) {
     console.error('Error creating log entry:', err);
-    res.status(500).json({ error: 'Failed to create log entry' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create log entry' });
   }
 });
 
@@ -1845,7 +2029,8 @@ app.post('/api/logs/bulk', verifyToken, async (req, res) => {
 
   try {
     for (let index = 0; index < incomingLogs.length; index += 1) {
-      const preparedLog = await buildPreparedLogEntry(incomingLogs[index], {
+      const scopedPayload = await applyTeacherLogScope(incomingLogs[index], req.user);
+      const preparedLog = await buildPreparedLogEntry(scopedPayload, {
         requireStudentId: true,
         requireScannerFields: false
       });
@@ -1863,11 +2048,12 @@ app.post('/api/logs/bulk', verifyToken, async (req, res) => {
 app.delete('/api/logs/:id', verifyToken, async (req, res) => {
   const logId = req.params.id;
   try {
+    await assertUserCanManageLog(req.user, logId);
     await pool.query('DELETE FROM logs WHERE id = $1', [logId]);
     res.json({ message: 'Log entry deleted successfully' });
   } catch (err) {
     console.error('Error deleting log entry:', err);
-    res.status(500).json({ error: 'Failed to delete log entry' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to delete log entry' });
   }
 });
 
@@ -1918,13 +2104,39 @@ app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
 
 app.get('/api/logs/analytics', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT first_name, last_name, scanner_location, student_id, period, COUNT(*) AS total
-      FROM logs
-      GROUP BY first_name, last_name, scanner_location, student_id, period
-      ORDER BY first_name ASC, last_name ASC, period ASC
-    `);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    const totals = new Map();
+
+    visibleLogs.forEach(log => {
+      const key = [
+        log.first_name || '',
+        log.last_name || '',
+        log.scanner_location || '',
+        log.student_id || '',
+        log.period || ''
+      ].join('__');
+
+      if (!totals.has(key)) {
+        totals.set(key, {
+          first_name: log.first_name,
+          last_name: log.last_name,
+          scanner_location: log.scanner_location,
+          student_id: log.student_id,
+          period: log.period,
+          total: 0
+        });
+      }
+
+      totals.get(key).total += 1;
+    });
+
+    res.json(
+      Array.from(totals.values()).sort((left, right) =>
+        `${left.first_name || ''}${left.last_name || ''}${left.period || ''}`.localeCompare(
+          `${right.first_name || ''}${right.last_name || ''}${right.period || ''}`
+        )
+      )
+    );
   } catch (err) {
     console.error('Error fetching analytics:', err);
     res.status(500).json({ error: 'Failed to fetch analytics' });
@@ -1934,12 +2146,8 @@ app.get('/api/logs/analytics', verifyToken, async (req, res) => {
 app.get('/api/logs/:room', verifyToken, async (req, res) => {
   const { room } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1
-    `, [room]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(visibleLogs.filter(log => String(log.scanner_location || '') === String(room)));
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -1949,12 +2157,13 @@ app.get('/api/logs/:room', verifyToken, async (req, res) => {
 app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
   const { room, period } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1 AND period = $2
-    `, [room, period]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(
+      visibleLogs.filter(log =>
+        String(log.scanner_location || '') === String(room) &&
+        String(log.period || '') === String(period)
+      )
+    );
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -1964,12 +2173,14 @@ app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
 app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
   const { room, period, date } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1 AND period = $2 AND date_scanned = $3
-    `, [room, period, date]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(
+      visibleLogs.filter(log =>
+        String(log.scanner_location || '') === String(room) &&
+        String(log.period || '') === String(period) &&
+        String(log.date_scanned || '') === String(date)
+      )
+    );
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -2016,7 +2227,11 @@ app.get('/analytics', redirectIfNotAuthenticated, (req, res) => {
 });
 
 app.get('/master_logs', redirectIfNotAuthenticated, requireRole('administrator'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'pages', 'master_logs.html'));
+res.sendFile(path.join(__dirname, 'public', 'pages', 'master_logs.html'));
+});
+
+app.get('/my_logs', redirectIfNotAuthenticated, (req, res) => {
+res.sendFile(path.join(__dirname, 'public', 'pages', 'teacher_logs.html'));
 });
 
 app.get('/calendar', redirectIfNotAuthenticated, (req, res) => {

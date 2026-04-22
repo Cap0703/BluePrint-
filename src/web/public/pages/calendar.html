@@ -1,420 +1,134 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Calendar - BluePrint™</title>
-        <link rel="stylesheet" href="/css/style.css">
-        <script defer src="/js/navbar.js"></script>
-        <script defer src="/js/calendar.js"></script>
-        <link rel="icon" type="image/png" href="/images/favicon.png">
-        <style>
-            .calendar-container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-
-            .calendar-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 1.5rem;
-                padding: 0 1rem;
-                background: rgb(11, 144, 252);
-                border-radius: 12px;
-                opacity: 0.95;
-            }
-
-            .calendar-title {
-                display: flex;
-                align-items: center;
-                gap: 1rem;
-            }
-
-            .calendar-title h1 {
-                margin: 0;
-                color: #e0e0e0;
-                font-size: 2rem;
-                font-weight: 600;
-            }
-
-            .calendar-controls {
-                display: flex;
-                gap: 1rem;
-                align-items: center;
-            }
-
-            .refresh-btn {
-                background: #1a73e8;
-                color: white;
-                border: none;
-                padding: 0.7rem 1.2rem;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: 600;
-                transition: all 0.3s ease;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                font-size: 0.9rem;
-            }
-
-            .refresh-btn:hover {
-                background: #155bb5;
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
-            }
-
-            .cache-status {
-                color: #b0b7c3;
-                font-size: 0.85rem;
-                background: rgba(255, 255, 255, 0.05);
-                padding: 0.5rem 1rem;
-                border-radius: 8px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-
-            .calendar-view {
-                background: rgba(255, 255, 255, 0.05);
-                border-radius: 12px;
-                border: 10px solid rgba(5, 130, 183, 0.51);
-                overflow: hidden;
-                margin-top: 1rem;
-                min-height: 600px;
-            }
-
-            .calendar-grid {
-                display: flex;
-                position: relative;
-                min-height: 1040px;
-            }
-
-            .time-column {
-                width: 80px;
-                flex-shrink: 0;
-                border-right: 1px solid rgba(255, 255, 255, 0.1);
-                position: relative;
-                padding-top: 10px;
-            }
-
-            .time-slot {
-                height: 60px;
-                position: relative;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            }
-
-            .time-label {
-                position: absolute;
-                top: -10px;
-                right: 10px;
-                color: #b0b7c3;
-                font-size: 0.85rem;
-                font-weight: 500;
-                background: rgba(61, 89, 129, 0.9);
-                padding: 0 4px;
-                z-index: 1;
-            }
-
-            .events-column {
-                flex: 1;
-                position: relative;
-                padding-top: 10px;
-            }
-
-            .event-item {
-                position: absolute;
-                left: 10px;
-                right: 10px;
-                background: rgb(77, 169, 245);
-                opacity: 0.95;
-                border-left: 3px solid #1a73e8;
-                border-radius: 8px;
-                padding: 0.8rem;
-                overflow: hidden;
-                transition: all 0.3s ease;
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-            }
-
-            .event-item:hover {
-                background: rgba(26, 115, 232, 0.25);
-                transform: translateX(4px);
-                box-shadow: 0 4px 15px rgba(26, 115, 232, 0.2);
-            }
-
-            .event-time {
-                color: #4266dd;
-                font-size: 0.85rem;
-                font-weight: 600;
-                margin-bottom: 0.3rem;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-
-            .event-title {
-                color: #e0e0e0;
-                font-size: 1rem;
-                font-weight: 500;
-            }
-
-            .current-period {
-                background: rgba(76, 175, 80, 0.2);
-                border-left-color: #4caf50;
-                box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
-            }
-
-            .current-period .event-time {
-                color: #81c784;
-            }
-
-            .current-time-indicator {
-                position: absolute;
-                left: 0;
-                right: 0;
-                height: 2px;
-                background: #ff5252;
-                z-index: 50;
-                box-shadow: 0 0 10px rgba(255, 82, 82, 0.8);
-            }
-
-            .current-time-indicator::before {
-                content: '';
-                position: absolute;
-                left: -6px;
-                top: -4px;
-                width: 10px;
-                height: 10px;
-                background: #ff5252;
-                border-radius: 50%;
-                box-shadow: 0 0 10px rgba(255, 82, 82, 0.8);
-            }
-
-            .current-time-label {
-                position: absolute;
-                left: 15px;
-                background: #ff5252;
-                color: white;
-                padding: 0.2rem 0.5rem;
-                border-radius: 4px;
-                font-size: 0.75rem;
-                font-weight: 600;
-                z-index: 50;
-                box-shadow: 0 2px 8px rgba(255, 82, 82, 0.3);
-            }
-
-            .hour-marker {
-                position: absolute;
-                left: 0;
-                right: 0;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            }
-
-            .half-hour-marker {
-                position: absolute;
-                left: 0;
-                right: 0;
-                border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
-            }
-
-            .loading-state {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 400px;
-                color: #b0b7c3;
-            }
-
-            .loading-spinner {
-                width: 40px;
-                height: 40px;
-                border: 3px solid rgba(255, 255, 255, 0.1);
-                border-top-color: #1a73e8;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
-                margin-bottom: 1rem;
-            }
-
-            @keyframes spin {
-                to { transform: rotate(360deg); }
-            }
-
-            .no-events {
-                text-align: center;
-                padding: 3rem;
-                color: #b0b7c3;
-                font-style: italic;
-            }
-
-            .error-state {
-                text-align: center;
-                padding: 2rem;
-                color: #ff5252;
-                background: rgba(255, 82, 82, 0.1);
-                border-radius: 8px;
-                margin: 2rem;
-                border: 1px solid rgba(255, 82, 82, 0.2);
-            }
-
-            .date-display {
-                color: #b0b7c3;
-                font-size: 1rem;
-                margin-top: 0.5rem;
-                padding-left: 3.5rem;
-            }
-
-            .calendar-icon {
-                filter: brightness(0) invert(1);
-                width: 32px;
-                height: 32px;
-            }
-
-            .calendar-grid::before {
-                content: '';
-                position: absolute;
-                top: 10px;
-                left: 80px;
-                right: 0;
-                border-top: 1px solid rgba(255, 255, 255, 0.1);
-                z-index: 1;
-            }
-
-            .events-column::-webkit-scrollbar {
-                width: 8px;
-            }
-
-            .events-column::-webkit-scrollbar-track {
-                background: rgba(255, 255, 255, 0.05);
-            }
-
-            .events-column::-webkit-scrollbar-thumb {
-                background: #1a73e8;
-                border-radius: 4px;
-            }
-
-            @media (max-width: 768px) {
-                .calendar-header {
-                    flex-direction: column;
-                    gap: 1rem;
-                    align-items: flex-start;
-                }
-
-                .calendar-controls {
-                    width: 100%;
-                    justify-content: space-between;
-                }
-
-                .time-column {
-                    width: 60px;
-                }
-
-                .time-label {
-                    font-size: 0.75rem;
-                    right: 5px;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div id="navbar"></div>
-        <div class="main-content">
-            <div class="calendar-container">
-                <div class="calendar-header">
-                    <div class="calendar-title">
-                        <img src="navbar-icon/calendar.png" alt="Calendar" class="calendar-icon">
-                        <h1>Bell Schedule</h1>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar - BluePrint</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script defer src="/js/navbar.js"></script>
+    <script defer src="/js/calendar.js"></script>
+    <link rel="icon" type="image/png" href="/images/favicon.png">
+</head>
+<body>
+    <div id="navbar"></div>
+    <main class="page-shell calendar-shell">
+        <section class="glass-panel calendar-hero">
+            <div class="calendar-hero-grid">
+                <div class="calendar-brand">
+                    <div class="calendar-brand-icon">
+                        <img src="/navbar-icon/calendar.png" alt="Calendar">
                     </div>
-                    <div class="date-display" id="currentDate" style="position:center; color:#ffffff;"></div>
-                    <div class="calendar-controls">
-                        <div class="cache-status" id="cacheStatus">Loading...</div>
-                        <button class="refresh-btn" onclick="loadCalendarEvents()">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C7.58 4 4.01 7.58 4.01 12C4.01 16.42 7.58 20 12 20C15.73 20 18.84 17.45 19.73 14H17.65C16.83 16.33 14.61 18 12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C13.66 6 15.14 6.69 16.22 7.78L13 11H20V4L17.65 6.35Z" fill="currentColor"/>
-                            </svg>
-                            Refresh
-                        </button>
+                    <div>
+                        <p class="modal-kicker">BluePrint Schedule</p>
+                        <h1>Bell Schedule</h1>
+                        <p class="page-subtitle">Track the current day’s academic rhythm with a live visual schedule that matches the rest of the BluePrint operations workspace.</p>
                     </div>
                 </div>
-                <div class="calendar-view">
-                    <div class="calendar-grid">
-                        <div class="time-column" id="timeColumn"></div>
-                        <div class="events-column" id="eventsContainer">
-                            <div class="loading-state">
-                                <div class="loading-spinner"></div>
-                                <div>Loading schedule...</div>
-                            </div>
+                <div class="calendar-meta">
+                    <div class="calendar-status-chip">
+                        <span>Today</span>
+                        <strong id="currentDate">Loading date...</strong>
+                    </div>
+                    <div class="calendar-status-chip">
+                        <span>Data Status</span>
+                        <strong id="cacheStatus">Loading...</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass-panel calendar-panel">
+            <div class="panel-title">
+                <div>
+                    <h2>Daily Timeline</h2>
+                    <p class="management-copy">Refresh the live feed to pick up cached calendar updates and current period highlighting.</p>
+                </div>
+                <div class="calendar-toolbar-actions">
+                    <button class="secondary-btn" type="button" onclick="loadCalendarEvents()">Refresh Schedule</button>
+                </div>
+            </div>
+            <div class="calendar-toolbar">
+                <span class="calendar-cache-status">Live school-day view</span>
+            </div>
+            <div class="calendar-view">
+                <div class="calendar-grid">
+                    <div class="time-column" id="timeColumn"></div>
+                    <div class="events-column" id="eventsContainer">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            <div>Loading schedule...</div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <script>
-            function updateCurrentDate() {
-                const now = new Date();
-                const options = { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                };
-                document.getElementById('currentDate').textContent = 
-                    now.toLocaleDateString('en-US', options);
-            }
+        </section>
+    </main>
+    <script>
+        function updateCurrentDate() {
+            const now = new Date();
+            const options = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            };
+            document.getElementById('currentDate').textContent =
+                now.toLocaleDateString('en-US', options);
+        }
 
-            function generateTimeColumn() {
-                const container = document.getElementById('timeColumn');
-                let html = '';
-                for (let hour = 6; hour < 24; hour++) {
-                    const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-                    const ampm = hour >= 12 ? 'PM' : 'AM';
-                    html += `<div class="time-slot" style="height: 60px;">
-                                <div class="time-label">${displayHour}:00 ${ampm}</div>
-                            </div>`;
-                }
-                container.innerHTML = html;
+        function generateTimeColumn() {
+            const container = document.getElementById('timeColumn');
+            let html = '';
+            for (let hour = CALENDAR_START_HOUR; hour < CALENDAR_END_HOUR; hour += 1) {
+                const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                html += `<div class="time-slot"><div class="time-label">${displayHour}:00 ${ampm}</div></div>`;
             }
+            container.innerHTML = html;
+        }
 
-            function updateCacheStatus(lastUpdated) {
-                const statusElement = document.getElementById('cacheStatus');
-                if (!lastUpdated) {
-                    statusElement.textContent = 'Loading...';
-                    return;
-                }
-                const updated = new Date(lastUpdated);
-                const now = new Date();
-                const minutesAgo = Math.floor((now - updated) / (1000 * 60));
-                let statusText = 'Updated ';
-                if (minutesAgo === 0) {
-                    statusText += 'just now';
-                } else if (minutesAgo === 1) {
-                    statusText += '1 minute ago';
-                } else if (minutesAgo < 60) {
-                    statusText += `${minutesAgo} minutes ago`;
-                } else {
-                    const hoursAgo = Math.floor(minutesAgo / 60);
-                    statusText += `${hoursAgo} hour${hoursAgo > 1 ? 's' : ''} ago`;
-                }
-                statusElement.textContent = statusText;
+        function updateCacheStatus(lastUpdated) {
+            const statusElement = document.getElementById('cacheStatus');
+            if (!lastUpdated) {
+                statusElement.textContent = 'Loading...';
+                return;
             }
+            const updated = new Date(lastUpdated);
+            const now = new Date();
+            const minutesAgo = Math.floor((now - updated) / (1000 * 60));
+            let statusText = 'Updated ';
+            if (minutesAgo === 0) {
+                statusText += 'just now';
+            } else if (minutesAgo === 1) {
+                statusText += '1 minute ago';
+            } else if (minutesAgo < 60) {
+                statusText += `${minutesAgo} minutes ago`;
+            } else {
+                const hoursAgo = Math.floor(minutesAgo / 60);
+                statusText += `${hoursAgo} hour${hoursAgo > 1 ? 's' : ''} ago`;
+            }
+            statusElement.textContent = statusText;
+        }
 
-            function scrollToCurrentTime() {
-                const now = new Date();
-                const currentHour = now.getHours();
-                const currentMinute = now.getMinutes();
-                const scrollPosition = (currentHour * 60 + currentMinute) + 10 - 150;
-                const eventsColumn = document.querySelector('.events-column');
-                if (eventsColumn) {
-                    eventsColumn.scrollTop = Math.max(0, scrollPosition);
-                }
+        function scrollToCurrentTime() {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const currentTotalMinutes = (currentHour * 60) + currentMinute;
+            const scrollPosition = minuteToCalendarOffset(currentTotalMinutes) - 150;
+            const calendarView = document.querySelector('.calendar-view');
+            if (calendarView) {
+                calendarView.scrollTop = Math.max(0, scrollPosition);
             }
-            
-            document.addEventListener('DOMContentLoaded', function() {
-                updateCurrentDate();
-                generateTimeColumn();
-                loadCalendarEvents();
-                setTimeout(scrollToCurrentTime, 100);
-                setInterval(loadCalendarEvents, 5 * 60 * 1000);
-            });
-        </script>
-    </body>
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCurrentDate();
+            generateTimeColumn();
+            loadCalendarEvents();
+            setTimeout(scrollToCurrentTime, 100);
+            setInterval(loadCalendarEvents, 5 * 60 * 1000);
+        });
+    </script>
+</body>
 </html>

@@ -36,12 +36,9 @@ async function loadProfilePage() {
 
 function renderProfile() {
   const user = profileState.user;
-  const courseIds = (user.courses || []).map(Number);
-  const assignedCourses = profileState.courses.filter(course => courseIds.includes(Number(course.id)));
+  const assignedCourses = Array.isArray(profileState.courses) ? profileState.courses : [];
   const roomNames = new Set(assignedCourses.map(course => String(course.room)));
-  const relatedLogs = user.role === 'teacher'
-    ? profileState.logs.filter(log => roomNames.has(String(log.scanner_location)))
-    : profileState.logs;
+  const relatedLogs = Array.isArray(profileState.logs) ? profileState.logs : [];
 
   document.getElementById('profileName').textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User';
   document.getElementById('profileEmail').textContent = user.email || 'No email on file';

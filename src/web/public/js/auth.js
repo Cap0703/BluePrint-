@@ -65,7 +65,14 @@ function updateNavbarWithUser() {
 }
 
 function filterNavByRole() {
-  if (!currentUser || currentUser.role === 'administrator') return;
+  if (!currentUser) return;
+  if (currentUser.role === 'administrator') {
+    const myLogsLink = document.querySelector(`.navbar-link[data-page="my_logs"]`);
+    if (myLogsLink && myLogsLink.parentElement) {
+      myLogsLink.parentElement.style.display = 'none';
+    }
+    return;
+  }
   window.currentUser = currentUser;
   const hideLinks = () => {
     const protectedPages = ['admin', 'master_logs', 'scanners', 'app_settings'];
@@ -85,6 +92,11 @@ function filterNavByRole() {
     hideLinksForNonAdmin();
   }
   hideLinks();
+
+  const myLogsLink = document.querySelector(`.navbar-link[data-page="my_logs"]`);
+  if (myLogsLink && myLogsLink.parentElement) {
+    myLogsLink.parentElement.style.display = '';
+  }
 }
 
 async function logout() {

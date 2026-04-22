@@ -115,7 +115,11 @@
     <div id="editUserModal" class="modal surface-modal">
         <div class="modal-content">
             <span class="close-btn" id="closeEditUserModal">&times;</span>
-            <div class="panel-title"><h2>Edit User</h2></div>
+            <div class="modal-header">
+                <p class="modal-kicker">BluePrint Admin</p>
+                <div class="panel-title"><h2>Edit User</h2></div>
+                <p class="modal-subtitle">Update account details, role access, and classroom assignments without leaving the operations view.</p>
+            </div>
             <form id="editUserForm" class="management-form">
                 <div class="form-group"><label>Email</label><input type="email" id="edit_user_email" required></div>
                 <div class="form-group"><label>First Name</label><input type="text" id="edit_user_first_name" required></div>
@@ -138,8 +142,41 @@
             </form>
         </div>
     </div>
+    <div id="editCourseModal" class="modal surface-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeEditCourseModal">&times;</span>
+            <div class="modal-header">
+                <p class="modal-kicker">BluePrint Admin</p>
+                <div class="panel-title"><h2>Edit Course</h2></div>
+                <p class="modal-subtitle">Refine the room and period pairing that teachers and logs use across the app.</p>
+            </div>
+            <form id="editCourseForm" class="management-form">
+                <div class="form-group"><label>Room Number</label><input type="text" id="edit_course_room" required></div>
+                <div class="form-group">
+                    <label>Period</label>
+                    <select id="edit_course_period" required>
+                        <option value="">Select a period...</option>
+                        <option value="Period 1">Period 1</option>
+                        <option value="Period 2">Period 2</option>
+                        <option value="Period 3">Period 3</option>
+                        <option value="Period 4">Period 4</option>
+                        <option value="Period 5">Period 5</option>
+                        <option value="Period 6">Period 6</option>
+                        <option value="Period 7">Period 7</option>
+                        <option value="Academic Support">Academic Support</option>
+                        <option value="School Wide Mass">School Wide Mass</option>
+                        <option value="Faith Family">Faith Family</option>
+                        <option value="Club">Club</option>
+                    </select>
+                </div>
+                <div class="button-row"><button type="submit" class="primary-btn"><i class="fas fa-save"></i> Update Course</button></div>
+                <p id="editCourseMessage" class="management-message"></p>
+            </form>
+        </div>
+    </div>
     <script>
         let currentEditingUserId = null;
+        let currentEditingCourseId = null;
         let allCourses = [];
         const token = localStorage.getItem('auth_token');
         document.addEventListener('DOMContentLoaded', async () => {
@@ -147,6 +184,7 @@
             await loadUsers();
             await loadSettings();
             setupCourseForm();
+            setupCourseEditForm();
             setupRoleToggle();
             bindBulkAdminActions();
         });
@@ -159,6 +197,36 @@
             document.getElementById('userCsvInput').addEventListener('change', handleUserCsvUpload);
             document.getElementById('reindexDatabaseBtn').addEventListener('click', reindexDatabase);
             document.getElementById('clearAllLogsBtn').addEventListener('click', clearAllLogs);
+        }
+
+        function normalizeCourseCollection(courses) {
+            const byId = new Map();
+            (Array.isArray(courses) ? courses : []).forEach(course => {
+                const id = Number(course?.id);
+                if (!Number.isInteger(id) || byId.has(id)) return;
+                byId.set(id, {
+                    ...course,
+                    id
+                });
+            });
+            return Array.from(byId.values()).sort((left, right) => {
+                const leftLabel = `${left.room || ''} ${left.period || ''}`.trim();
+                const rightLabel = `${right.room || ''} ${right.period || ''}`.trim();
+                return leftLabel.localeCompare(rightLabel);
+            });
+        }
+
+        function formatAssignedCourses(courseIds) {
+            const normalizedIds = [...new Set((Array.isArray(courseIds) ? courseIds : []).map(value => Number(value)).filter(Number.isInteger))];
+            if (!normalizedIds.length) return '';
+
+            const courseMap = new Map(normalizeCourseCollection(allCourses).map(course => [course.id, course]));
+            const labels = normalizedIds.map(id => {
+                const course = courseMap.get(id);
+                return course ? `Room ${course.room} - ${course.period}` : `Missing course #${id}`;
+            });
+
+            return [...new Set(labels)].join(', ');
         }
         
         function setupRoleToggle() {
@@ -185,6 +253,31 @@
                     <span>Room ${course.room} - ${course.period}</span>
                 </label>
             `).join('');
+        }
+
+        function getSelectedCourseIds(containerSelector) {
+            return Array.from(document.querySelectorAll(`${containerSelector} .course-checkbox:checked`))
+                .map(checkbox => String(checkbox.value));
+        }
+
+        function syncCourseAssignmentLists() {
+            const coursesGroup = document.getElementById('coursesGroup');
+            if (coursesGroup.style.display !== 'none') {
+                const selectedAddCourses = getSelectedCourseIds('#coursesList');
+                populateCoursesCheckboxes('coursesList');
+                document.querySelectorAll('#coursesList .course-checkbox').forEach(checkbox => {
+                    checkbox.checked = selectedAddCourses.includes(String(checkbox.value));
+                });
+            }
+
+            const editCoursesGroup = document.getElementById('editCoursesGroup');
+            if (editCoursesGroup.style.display !== 'none') {
+                const selectedEditCourses = getSelectedCourseIds('#editCoursesList');
+                populateCoursesCheckboxes('editCoursesList');
+                document.querySelectorAll('#editCoursesList .course-checkbox').forEach(checkbox => {
+                    checkbox.checked = selectedEditCourses.includes(String(checkbox.value));
+                });
+            }
         }
         
         function setupCourseForm() {
@@ -213,7 +306,10 @@
                     messageEl.textContent = 'Course added successfully!';
                     document.getElementById('addCourseForm').reset();
                     setTimeout(() => {
-                        loadCourses();
+                        loadCourses().then(() => {
+                            syncCourseAssignmentLists();
+                            loadUsers();
+                        });
                         messageEl.textContent = '';
                     }, 1000);
                 } catch (err) {
@@ -235,7 +331,7 @@
                 if (!response.ok) {
                     throw new Error('Failed to load courses');
                 }
-                allCourses = await response.json();
+                allCourses = normalizeCourseCollection(await response.json());
                 if (allCourses.length === 0) {
                     container.innerHTML = `<div class="empty-state"><h3>No Courses</h3><p>Add a course using the form on the left.</p></div>`;
                     return;
@@ -253,11 +349,18 @@
                         <tbody>
                 `;
                 allCourses.forEach(course => {
+                    const roomJson = JSON.stringify(course.room);
+                    const periodJson = JSON.stringify(course.period);
                     tableHTML += `
                         <tr>
                             <td>${course.room}</td>
                             <td>${course.period}</td>
-                            <td><div class="management-action-row"><button class="danger-button" onclick="deleteCourse(${course.id})">Delete</button></div></td>
+                            <td>
+                                <div class="management-action-row">
+                                    <button class="soft-button" onclick='editCourse(${course.id}, ${roomJson}, ${periodJson})'>Edit</button>
+                                    <button class="danger-button" onclick="deleteCourse(${course.id})">Delete</button>
+                                </div>
+                            </td>
                         </tr>
                     `;
                 });
@@ -284,11 +387,78 @@
                     alert('Failed to delete course');
                     return;
                 }
-                loadCourses();
+                loadCourses().then(() => {
+                    syncCourseAssignmentLists();
+                    loadUsers();
+                });
             } catch (err) {
                 console.error('Error deleting course:', err);
                 alert('Error deleting course');
             }
+        }
+
+        function setupCourseEditForm() {
+            const modal = document.getElementById('editCourseModal');
+            const closeBtn = document.getElementById('closeEditCourseModal');
+            const form = document.getElementById('editCourseForm');
+            const messageEl = document.getElementById('editCourseMessage');
+
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            window.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!currentEditingCourseId) return;
+
+                const room = document.getElementById('edit_course_room').value.trim();
+                const period = document.getElementById('edit_course_period').value;
+                messageEl.textContent = 'Updating course...';
+
+                try {
+                    const response = await fetch(`/api/courses/${currentEditingCourseId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ room, period })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        messageEl.textContent = data.error || 'Failed to update course';
+                        return;
+                    }
+
+                    messageEl.textContent = 'Course updated successfully!';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        messageEl.textContent = '';
+                        loadCourses().then(() => {
+                            syncCourseAssignmentLists();
+                            loadUsers();
+                        });
+                    }, 600);
+                } catch (err) {
+                    console.error(err);
+                    messageEl.textContent = 'Server error';
+                }
+            });
+        }
+
+        function editCourse(id, room, period) {
+            currentEditingCourseId = id;
+            document.getElementById('edit_course_room').value = room;
+            document.getElementById('edit_course_period').value = period;
+            document.getElementById('editCourseMessage').textContent = '';
+            document.getElementById('editCourseModal').style.display = 'flex';
         }
         document.getElementById('addUserForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -424,16 +594,13 @@
                 `;
                 users.forEach(user => {
                     const created = new Date(user.created_at).toLocaleDateString();
-                    const courses = user.courses || [];
-                    let coursesStr = '';
-                    if (courses.length && allCourses.length) {
-                        const matched = allCourses.filter(c => courses.includes(c.id));
-                        coursesStr = matched.map(c => `Room ${c.room} - ${c.period}`).join(', ');
-                    }
-                    if (!coursesStr && courses.length) {
-                        coursesStr = courses.join(', ');
-                    }
+                    const courses = Array.isArray(user.courses) ? user.courses : [];
+                    const coursesStr = formatAssignedCourses(courses);
                     const coursesJson = JSON.stringify(courses);
+                    const emailJson = JSON.stringify(user.email);
+                    const firstNameJson = JSON.stringify(user.first_name);
+                    const lastNameJson = JSON.stringify(user.last_name);
+                    const roleJson = JSON.stringify(user.role);
                     tableHTML += `
                         <tr>
                             <td>${user.email}</td>
@@ -443,8 +610,8 @@
                             <td>${created}</td>
                             <td>
                                 <div class="management-action-row">
-                                    <button class="soft-button" onclick="editUser(${user.id}, '${user.email}', '${user.first_name}', '${user.last_name}', '${user.role}', ${coursesJson})">Edit</button>
-                                    <button class="danger-button" onclick="deleteUser(${user.id}, '${user.email}')">Delete</button>
+                                    <button class="soft-button" onclick='editUser(${user.id}, ${emailJson}, ${firstNameJson}, ${lastNameJson}, ${roleJson}, ${coursesJson})'>Edit</button>
+                                    <button class="danger-button" onclick='deleteUser(${user.id}, ${emailJson})'>Delete</button>
                                 </div>
                             </td>
                         </tr>
@@ -468,12 +635,13 @@
             editUserMessage.textContent = '';
             const editCoursesGroup = document.getElementById('editCoursesGroup');
             if (role === 'teacher') {
+                const normalizedCourses = Array.isArray(courses) ? courses.map(String) : [];
                 editCoursesGroup.style.display = 'block';
                 populateCoursesCheckboxes('editCoursesList');
                 setTimeout(() => {
                     const checkboxes = document.querySelectorAll('#editCoursesList .course-checkbox');
                     checkboxes.forEach(cb => {
-                        cb.checked = courses.includes(parseInt(cb.value));
+                        cb.checked = normalizedCourses.includes(String(cb.value));
                     });
                 }, 0);
             } else {
