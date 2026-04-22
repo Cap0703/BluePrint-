@@ -47,6 +47,9 @@
                 <p class="page-subtitle">Manage scanner devices, review sync health, and open a live terminal when a scanner needs attention.</p>
             </div>
             <div class="management-toolbar">
+                <input type="file" id="scannerCsvInput" accept=".csv,text/csv" hidden>
+                <button id="uploadScannersBtn" class="secondary-btn"><i class="fas fa-file-upload"></i> Upload Scanners</button>
+                <button id="downloadScannersTemplateBtn" class="secondary-btn"><i class="fas fa-file-arrow-down"></i> Scanner Template</button>
                 <button id="openScannerModal" class="primary-btn"><i class="fas fa-plus"></i> Add Scanner</button>
             </div>
         </section>

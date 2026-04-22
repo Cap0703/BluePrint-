@@ -16,6 +16,11 @@
                 <h1>Admin Center</h1>
                 <p class="page-subtitle">Manage users, course assignments, and attendance system settings from a unified operations page.</p>
             </div>
+            <div class="management-toolbar">
+                <input type="file" id="userCsvInput" accept=".csv,text/csv" hidden>
+                <button type="button" id="uploadUsersBtn" class="secondary-btn"><i class="fas fa-file-upload"></i> Upload Web Users</button>
+                <button type="button" id="downloadUsersTemplateBtn" class="secondary-btn"><i class="fas fa-file-arrow-down"></i> User Template</button>
+            </div>
         </section>
 
         <section class="management-grid">
@@ -94,6 +99,16 @@
                     <p id="settingsMessage" class="management-message"></p>
                 </form>
             </section>
+
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Database Maintenance</h2></div>
+                <p class="management-copy">Run maintenance tasks for the live database and clear attendance logs when you intentionally need a clean slate.</p>
+                <div class="button-row">
+                    <button type="button" id="reindexDatabaseBtn" class="soft-button"><i class="fas fa-database"></i> Reindex Database</button>
+                    <button type="button" id="clearAllLogsBtn" class="danger-button"><i class="fas fa-trash"></i> Delete All Logs</button>
+                </div>
+                <p id="maintenanceMessage" class="management-message"></p>
+            </section>
         </section>
     </main>
 
@@ -133,7 +148,18 @@
             await loadSettings();
             setupCourseForm();
             setupRoleToggle();
+            bindBulkAdminActions();
         });
+
+        function bindBulkAdminActions() {
+            document.getElementById('uploadUsersBtn').addEventListener('click', () => {
+                document.getElementById('userCsvInput').click();
+            });
+            document.getElementById('downloadUsersTemplateBtn').addEventListener('click', downloadUsersTemplate);
+            document.getElementById('userCsvInput').addEventListener('change', handleUserCsvUpload);
+            document.getElementById('reindexDatabaseBtn').addEventListener('click', reindexDatabase);
+            document.getElementById('clearAllLogsBtn').addEventListener('click', clearAllLogs);
+        }
         
         function setupRoleToggle() {
             document.getElementById('user_role').addEventListener('change', (e) => {
@@ -516,6 +542,198 @@
                 messageEl.textContent = 'Server error';
             }
         });
+
+        async function handleUserCsvUpload(event) {
+            const [file] = event.target.files || [];
+            if (!file) return;
+
+            const messageEl = document.getElementById('userMessage');
+            messageEl.textContent = 'Uploading users...';
+
+            try {
+                const rows = parseCsv(await file.text());
+                const users = rows.map(row => ({
+                    email: pickCsvValue(row, ['email']),
+                    first_name: pickCsvValue(row, ['first_name', 'firstname', 'first']),
+                    last_name: pickCsvValue(row, ['last_name', 'lastname', 'last']),
+                    password: pickCsvValue(row, ['password']),
+                    role: pickCsvValue(row, ['role']),
+                    courses: pickCsvValue(row, ['courses', 'course_ids', 'courseids'])
+                })).filter(user => Object.values(user).some(Boolean));
+
+                if (!users.length) {
+                    throw new Error('No valid user rows were found in the CSV');
+                }
+
+                const response = await fetch('/api/users/bulk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ users })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload users');
+                }
+
+                messageEl.textContent = `Uploaded ${data.inserted || users.length} users successfully.`;
+                loadUsers();
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to upload users';
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        async function reindexDatabase() {
+            const messageEl = document.getElementById('maintenanceMessage');
+            messageEl.textContent = 'Reindexing database...';
+            try {
+                const response = await fetch('/api/admin/reindex', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to reindex database');
+                }
+                messageEl.textContent = data.message || 'Database reindexed successfully.';
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to reindex database';
+            }
+        }
+
+        async function clearAllLogs() {
+            if (!confirm('Delete every log entry in Master Logs? This cannot be undone.')) {
+                return;
+            }
+            const messageEl = document.getElementById('maintenanceMessage');
+            messageEl.textContent = 'Deleting all logs...';
+            try {
+                const response = await fetch('/api/admin/logs/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to delete logs');
+                }
+                messageEl.textContent = `${data.deleted || 0} logs deleted successfully.`;
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to delete logs';
+            }
+        }
+
+        function parseCsv(text) {
+            const rows = [];
+            let current = '';
+            let row = [];
+            let inQuotes = false;
+
+            for (let index = 0; index < text.length; index += 1) {
+                const char = text[index];
+                const next = text[index + 1];
+
+                if (char === '"') {
+                    if (inQuotes && next === '"') {
+                        current += '"';
+                        index += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                    continue;
+                }
+
+                if (char === ',' && !inQuotes) {
+                    row.push(current);
+                    current = '';
+                    continue;
+                }
+
+                if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && next === '\n') {
+                        index += 1;
+                    }
+                    row.push(current);
+                    if (row.some(cell => String(cell).trim() !== '')) {
+                        rows.push(row);
+                    }
+                    row = [];
+                    current = '';
+                    continue;
+                }
+
+                current += char;
+            }
+
+            row.push(current);
+            if (row.some(cell => String(cell).trim() !== '')) {
+                rows.push(row);
+            }
+
+            const [headerRow, ...dataRows] = rows;
+            if (!headerRow) return [];
+            const headers = headerRow.map(normalizeCsvHeader);
+
+            return dataRows.map(columns => {
+                const mapped = {};
+                headers.forEach((header, idx) => {
+                    mapped[header] = String(columns[idx] ?? '').trim();
+                });
+                return mapped;
+            });
+        }
+
+        function normalizeCsvHeader(value) {
+            return String(value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function pickCsvValue(row, keys) {
+            for (const key of keys) {
+                if (row[key]) return row[key];
+            }
+            return '';
+        }
+
+        function downloadUsersTemplate() {
+            downloadCsvRows([
+                ['email', 'first_name', 'last_name', 'password', 'role', 'courses'],
+                ['teacher@example.com', 'Terry', 'Teacher', 'TempPass123', 'teacher', '1|2'],
+                ['admin@example.com', 'Avery', 'Admin', 'TempPass123', 'administrator', '']
+            ], 'web_users_template.csv');
+        }
+
+        function downloadCsvRows(rows, fileName) {
+            const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function escapeCsvValue(value) {
+            const normalized = value === undefined || value === null ? '' : String(value);
+            if (!/[",\n\r]/.test(normalized)) return normalized;
+            return `"${normalized.replace(/"/g, '""')}"`;
+        }
     </script>
 </body>
 </html>

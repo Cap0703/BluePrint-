@@ -229,6 +229,20 @@ function saveSettings() {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
+function getLosAngelesDateString(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -453,7 +467,6 @@ async function getPeriodsForDate(dateString) {
 }
 
 function getPeriodsToday() {
-  const today = new Date().toISOString().split('T')[0];
   return extractPeriods(calendarCache.data?.events) || getFallbackPeriods();
 }
 
@@ -660,16 +673,117 @@ function convertTo24HourFormat(time12h) {
 }
 
 function convertToCsv(logs) {
-  const header = ['Date Scanned', 'Time Scanned', 'Student ID', 'Period', 'Status'];
+  const header = [
+    'ID',
+    'Date Scanned',
+    'Time Scanned',
+    'Student ID',
+    'First Name',
+    'Last Name',
+    'Period',
+    'Scanner Location',
+    'Scanner ID',
+    'Status'
+  ];
   const rows = logs.map(log => [
+    log.id,
     log.date_scanned,
     normalizeLogTimeValue(log.time_scanned),
     log.student_id,
+    log.first_name,
+    log.last_name,
     log.period,
+    log.scanner_location,
+    log.scanner_id,
     log.status
   ]);
-  const csvContent = [header, ...rows].map(e => e.join(",")).join("\n");
+  const csvContent = [header, ...rows]
+    .map(row => row.map(escapeCsvValue).join(','))
+    .join("\n");
   return csvContent;
+}
+
+function escapeCsvValue(value) {
+  const normalized = value === undefined || value === null ? '' : String(value);
+  if (!/[",\n\r]/.test(normalized)) return normalized;
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function normalizeRequiredString(value, fieldLabel) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    throw new Error(`${fieldLabel} is required`);
+  }
+  return normalized;
+}
+
+function parseCourseAssignments(courses) {
+  if (courses === undefined || courses === null || courses === '') return [];
+  if (Array.isArray(courses)) {
+    return courses
+      .map(course => Number(course))
+      .filter(course => Number.isInteger(course) && course > 0);
+  }
+  return String(courses)
+    .split(/[|;,]/)
+    .map(part => Number(part.trim()))
+    .filter(course => Number.isInteger(course) && course > 0);
+}
+
+async function createStudentAccount(payload) {
+  let { student_id, first_name, last_name, password, uuid } = payload;
+  student_id = normalizeRequiredString(student_id, 'Student ID');
+  first_name = normalizeRequiredString(first_name, 'First name');
+  last_name = normalizeRequiredString(last_name, 'Last name');
+  password = normalizeRequiredString(password, 'Password');
+  uuid = normalizeOptionalValue(uuid);
+
+  const hashedPassword = await bcryptjs.hash(password, 10);
+  const result = await pool.query(`
+    INSERT INTO students (student_id, first_name, last_name, password_hash, uuid)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id, student_id, first_name, last_name
+  `, [student_id, first_name, last_name, hashedPassword, uuid]);
+
+  return result.rows[0];
+}
+
+async function createScannerAccount(payload) {
+  let { scanner_id, scanner_location, scanner_password, password } = payload;
+  scanner_id = normalizeRequiredString(scanner_id, 'Scanner ID');
+  scanner_location = normalizeRequiredString(scanner_location, 'Scanner location');
+  const rawPassword = normalizeRequiredString(scanner_password ?? password, 'Scanner password');
+
+  const hashedPassword = await bcryptjs.hash(rawPassword, 10);
+  const result = await pool.query(`
+    INSERT INTO scanners (scanner_id, scanner_location, password_hash)
+    VALUES ($1, $2, $3)
+    RETURNING id, scanner_id, scanner_location
+  `, [scanner_id, scanner_location, hashedPassword]);
+
+  return result.rows[0];
+}
+
+async function createWebUserAccount(payload) {
+  let { email, first_name, last_name, password, role, courses } = payload;
+  email = normalizeRequiredString(email, 'Email').toLowerCase();
+  first_name = normalizeRequiredString(first_name, 'First name');
+  last_name = normalizeRequiredString(last_name, 'Last name');
+  password = normalizeRequiredString(password, 'Password');
+  role = normalizeRequiredString(role, 'Role').toLowerCase();
+  if (!['teacher', 'administrator'].includes(role)) {
+    throw new Error('Role must be teacher or administrator');
+  }
+
+  const courseArray = role === 'teacher' ? parseCourseAssignments(courses) : [];
+  const hashedPassword = await bcryptjs.hash(password, 10);
+  const result = await pool.query(`
+    INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, email, first_name, last_name, role, courses
+  `, [email, first_name, last_name, hashedPassword, role, courseArray]);
+
+  return result.rows[0];
 }
 
 async function buildPreparedLogEntry(rawLog, options = {}) {
@@ -788,7 +902,7 @@ async function insertPreparedLogEntry(preparedLog) {
 
 /*-------------------------------------- Encryption Functions --------------------------------------*/
 function getDailyKey(dateString = null) {
-  const date = dateString || new Date().toISOString().split('T')[0];
+  const date = dateString || getLosAngelesDateString();
   return crypto
     .createHmac('sha256', MASTER_KEY)
     .update(date)
@@ -807,7 +921,7 @@ function encrypt(text) {
     encryptedData: encrypted,
     iv: iv.toString('hex'),
     authTag: authTag.toString('hex'),
-    date: new Date().toISOString().split('T')[0]
+    date: getLosAngelesDateString()
   };
 }
 
@@ -827,25 +941,30 @@ function decrypt(encryptedData, ivHex, authTagHex, date) {
 
 /*---------------------------------------- App Authentication ----------------------------------------------*/
 app.post('/api/students', verifyToken, requireRole('administrator'), async (req, res) => {
-  let { student_id, first_name, last_name, password, uuid } = req.body;
-  if (!student_id || !password || !first_name || !last_name) {
-    return res.status(400).json({error: 'All fields required'});
-  }
-  if (!uuid){
-    uuid = uuid || null;
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(password, 10);
-    const result = await pool.query(`
-      INSERT INTO students (student_id, first_name, last_name, password_hash, uuid)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, student_id, first_name, last_name
-      `, [student_id, first_name, last_name, hashedPassword, uuid]);
-    res.status(201).json(result.rows[0]);
+    const createdStudent = await createStudentAccount(req.body);
+    res.status(201).json(createdStudent);
   }
   catch (err){
     console.error(err);
-    res.status(500).json({ error: 'Failed to create student'});
+    res.status(500).json({ error: err.message || 'Failed to create student'});
+  }
+});
+
+app.post('/api/students/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.students) ? req.body.students : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No student rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createStudentAccount(row);
+    }
+    res.status(201).json({ message: 'Students uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to upload students' });
   }
 });
 
@@ -1049,22 +1168,34 @@ app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administr
 
 /*---------------------------------------- Scanner Authentication ----------------------------------------------*/
 app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { SCANNER_ID, SCANNER_LOCATION, SCANNER_PASSWORD } = req.body;
-  if (!SCANNER_ID || !SCANNER_LOCATION || !SCANNER_PASSWORD) {
-    return res.status(400).json({error: 'All fields required'});
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(SCANNER_PASSWORD, 10);
-    const result = await pool.query(`
-      INSERT INTO scanners (scanner_id, scanner_location, password_hash)
-      VALUES ($1, $2, $3)
-      RETURNING id, scanner_id, scanner_location
-      `, [SCANNER_ID, SCANNER_LOCATION, hashedPassword]);
-    res.status(201).json(result.rows[0]);
+    const createdScanner = await createScannerAccount({
+      scanner_id: req.body.SCANNER_ID,
+      scanner_location: req.body.SCANNER_LOCATION,
+      scanner_password: req.body.SCANNER_PASSWORD
+    });
+    res.status(201).json(createdScanner);
   }
   catch (err){
     console.error(err);
-    res.status(500).json({ error: 'Failed to create scanner'});
+    res.status(500).json({ error: err.message || 'Failed to create scanner'});
+  }
+});
+
+app.post('/api/scanners/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.scanners) ? req.body.scanners : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No scanner rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createScannerAccount(row);
+    }
+    res.status(201).json({ message: 'Scanners uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to upload scanners' });
   }
 });
 
@@ -1438,28 +1569,35 @@ app.get('/api/auth/me', verifyToken, async (req, res) => {
 
 /*-------User Management Endpoints-------*/
 app.post('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { email, first_name, last_name, password, role, courses } = req.body;
-  if (!email || !password || !first_name || !last_name || !role) {
-    return res.status(400).json({ error: 'All fields required' });
-  }
-  if (!['teacher', 'administrator'].includes(role)) {
-    return res.status(400).json({ error: 'Invalid role' });
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(password, 10);
-    const courseArray = role === 'teacher' && courses ? courses : [];
-    const result = await pool.query(`
-      INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, email, first_name, last_name, role, courses
-    `, [email.toLowerCase(), first_name, last_name, hashedPassword, role, courseArray]);
-    res.status(201).json(result.rows[0]);
+    const createdUser = await createWebUserAccount(req.body);
+    res.status(201).json(createdUser);
   } catch (err) {
     console.error(err);
     if (err.code === '23505') {
       return res.status(400).json({ error: 'Email already exists' });
     }
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+app.post('/api/users/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.users) ? req.body.users : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No user rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createWebUserAccount(row);
+    }
+    res.status(201).json({ message: 'Users uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'One or more emails already exist' });
+    }
+    res.status(500).json({ error: err.message || 'Failed to upload users' });
   }
 });
 
@@ -1637,7 +1775,7 @@ app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async 
 /*-------Calendar Endpoints-------*/
 app.get('/api/calendar/today', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLosAngelesDateString();
     const periods = await getPeriodsForDate(today);
     res.json({
       events: periods,
@@ -1649,7 +1787,7 @@ app.get('/api/calendar/today', async (req, res) => {
     res.json({
       events: getFallbackPeriods(),
       lastUpdated: new Date().toISOString(),
-      date: new Date().toISOString().split('T')[0]
+      date: getLosAngelesDateString()
     });
   }
 });
@@ -1730,6 +1868,31 @@ app.delete('/api/logs/:id', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting log entry:', err);
     res.status(500).json({ error: 'Failed to delete log entry' });
+  }
+});
+
+app.post('/api/admin/logs/clear', verifyToken, requireRole('administrator'), async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM logs');
+    res.json({ message: 'All logs deleted successfully', deleted: result.rowCount || 0 });
+  } catch (err) {
+    console.error('Error clearing logs:', err);
+    res.status(500).json({ error: 'Failed to clear logs' });
+  }
+});
+
+app.post('/api/admin/reindex', verifyToken, requireRole('administrator'), async (req, res) => {
+  const databaseName = String(process.env.DB_NAME || '').trim();
+  if (!databaseName || !/^[a-zA-Z0-9_]+$/.test(databaseName)) {
+    return res.status(500).json({ error: 'Database name is not configured for reindexing' });
+  }
+
+  try {
+    await pool.query(`REINDEX DATABASE ${databaseName}`);
+    res.json({ message: `Database ${databaseName} reindexed successfully` });
+  } catch (err) {
+    console.error('Error reindexing database:', err);
+    res.status(500).json({ error: 'Failed to reindex database' });
   }
 });
 
