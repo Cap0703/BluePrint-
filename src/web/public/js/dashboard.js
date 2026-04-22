@@ -431,21 +431,11 @@ function matchesLogSearch(log, search) {
 }
 
 function scopeCourses() {
-  if (dashboardState.user.role === 'administrator') {
-    return [...dashboardState.courses];
-  }
-
-  const assignedCourses = new Set((dashboardState.user.courses || []).map(Number));
-  return dashboardState.courses.filter(course => assignedCourses.has(Number(course.id)));
+  return [...dashboardState.courses];
 }
 
 function scopeLogs() {
-  if (dashboardState.user.role === 'administrator') {
-    return [...dashboardState.logs];
-  }
-
-  const assignedKeys = new Set(scopeCourses().map(course => courseKey(course)));
-  return dashboardState.logs.filter(log => assignedKeys.has(logCourseKey(log)));
+  return [...dashboardState.logs];
 }
 
 function countStatuses(logs) {

@@ -13,8 +13,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54";
-const char password[] = "silentbird445";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
@@ -28,7 +28,7 @@ const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 8 * 3600;
+const long gmtOffset_sec = 0;
 const int daylightOffset_sec = 0;
 
 // ========== FINGERPRINT HARDWARE ==========
@@ -243,9 +243,7 @@ int scanFingerprint() {
   return finger.fingerID;
 }
 
-// Flush the WS send buffer — must be called after every sendOutput inside
-// blocking loops, because webSocket.sendTXT() only queues the data; the
-// library needs loop() calls to actually write it to the TCP socket.
+// Flush WS send buffer — call after every sendOutput inside blocking loops
 static inline void wsFlush() {
   for (int i = 0; i < 10; i++) { webSocket.loop(); delay(10); }
 }
@@ -253,7 +251,7 @@ static inline void wsFlush() {
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
 
-  // Step 1: prompt and wait for first scan
+  // ── Step 1: first scan ───────────────────────────────────────────────────
   sendOutput("Place finger on sensor for student " + String(sID) + "...", -1);
   wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
@@ -267,21 +265,21 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
 
   p = finger.image2Tz(1);
   if (p != FINGERPRINT_OK) {
-    sendOutput("First scan failed. Try again.", -1);
+    sendOutput("First scan failed — try again.", -1);
     wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
     return p;
   }
 
-  // Step 2: lift finger
+  // ── Step 2: lift finger ──────────────────────────────────────────────────
   sendOutput("Good scan. Lift your finger.", -1);
   wsFlush();
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
   delay(2000);
   while (finger.getImage() != FINGERPRINT_NOFINGER) { webSocket.loop(); }
 
-  // Step 3: second scan
+  // ── Step 3: second scan ──────────────────────────────────────────────────
   p = -1;
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
   sendOutput("Place the SAME finger again to confirm...", -1);
@@ -303,10 +301,10 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
     return p;
   }
 
-  // Step 4: create and store model
+  // ── Step 4: create & store model ────────────────────────────────────────
   p = finger.createModel();
   if (p == FINGERPRINT_ENROLLMISMATCH) {
-    sendOutput("Fingerprints did not match. Please retry.", -1);
+    sendOutput("Fingerprints did not match — please retry.", -1);
     wsFlush();
     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
@@ -335,6 +333,7 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
   wsFlush();
   delay(3000);
+  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
   return FINGERPRINT_OK;
 }
 
@@ -393,6 +392,7 @@ void getDateTime(String &dateStr, String &timeStr) {
   strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeinfo);
   dateStr = String(dateBuffer);
   timeStr = String(timeBuffer);
+  Serial.println(dateStr);
 }
 
 void sendLog(int studentID, String method = "fingerprint") {
@@ -448,7 +448,7 @@ void sendOutput(String msg, int commandId) {
   if (!webSocket.isConnected()) {
     return;
   }
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<256> doc;
   doc["type"] = "output";
   doc["scannerId"] = scannerDbId;
   doc["output"] = msg;
@@ -653,8 +653,10 @@ void handleCommand(String cmd, int commandId) {
         return;
       }
 
+      // Send this BEFORE entering the blocking enrollment function so it
+      // goes out while the WS library is still in a clean state.
       sendOutput("Starting enrollment for student " + String(studentID) + "...", commandId);
-      wsFlush();  // flush before entering the blocking enrollment function
+      wsFlush();
 
       uint8_t result = getFingerprintEnroll(slot, studentID);
 
@@ -766,6 +768,8 @@ void setup() {
 
   Serial.println("[INIT] Syncing time with NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  setenv("TZ", "PST8PDT", 1);
+  tzset();
 
   Serial.println("[INIT] Authenticating with server...");
   if (!signIn()) {
@@ -807,6 +811,8 @@ void loop() {
                 if (mode == "scanner") {
                     sendLog(studentID, "fingerprint");
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+                    delay(1000);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 }
                 delay(3000);
             }
@@ -836,8 +842,11 @@ void handleNFCCardNonBlocking() {
                 }
                 if (isNumeric && nfcText.length() > 0) {
                     int studentID = nfcText.toInt();
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                     sendLog(studentID, "NFC");
                     sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+                    delay(1000);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 } else {
                     sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }

@@ -36,6 +36,11 @@ function initScannersPage() {
 }
 
 function bindScannerUi() {
+  document.getElementById('uploadScannersBtn').addEventListener('click', () => {
+    document.getElementById('scannerCsvInput').click();
+  });
+  document.getElementById('downloadScannersTemplateBtn').addEventListener('click', downloadScannersTemplate);
+  document.getElementById('scannerCsvInput').addEventListener('change', handleScannersCsvUpload);
   document.getElementById('openScannerModal').addEventListener('click', openCreateScannerModal);
   document.getElementById('closeScannerModal').addEventListener('click', closeScannerModal);
   document.getElementById('scannerForm').addEventListener('submit', submitScannerForm);
@@ -261,6 +266,42 @@ async function deleteScanner(scanner) {
   } catch (error) {
     console.error('Failed to delete scanner:', error);
     alert('Unable to delete scanner right now.');
+  }
+}
+
+async function handleScannersCsvUpload(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+
+  try {
+    const rows = parseCsv(await file.text());
+    const scanners = rows.map(row => ({
+      scanner_id: pickCsvValue(row, ['scanner_id', 'scannerid', 'id']),
+      scanner_location: pickCsvValue(row, ['scanner_location', 'location', 'room']),
+      password: pickCsvValue(row, ['password', 'scanner_password', 'scannerpassword'])
+    })).filter(scanner => Object.values(scanner).some(Boolean));
+
+    if (!scanners.length) {
+      throw new Error('No valid scanner rows were found in the CSV');
+    }
+
+    const response = await fetchWithToken('/api/scanners/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanners })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to upload scanners');
+    }
+
+    alert(`Uploaded ${data.inserted || scanners.length} scanners successfully.`);
+    await loadScanners();
+  } catch (error) {
+    console.error('Failed to upload scanners:', error);
+    alert(error.message || 'Failed to upload scanners');
+  } finally {
+    event.target.value = '';
   }
 }
 
@@ -522,4 +563,105 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+      row.push(current);
+      if (row.some(cell => String(cell).trim() !== '')) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some(cell => String(cell).trim() !== '')) {
+    rows.push(row);
+  }
+
+  const [headerRow, ...dataRows] = rows;
+  if (!headerRow) return [];
+  const headers = headerRow.map(normalizeCsvHeader);
+
+  return dataRows.map(columns => {
+    const mapped = {};
+    headers.forEach((header, idx) => {
+      mapped[header] = String(columns[idx] ?? '').trim();
+    });
+    return mapped;
+  });
+}
+
+function normalizeCsvHeader(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function pickCsvValue(row, keys) {
+  for (const key of keys) {
+    if (row[key]) return row[key];
+  }
+  return '';
+}
+
+function downloadScannersTemplate() {
+  downloadCsvRows([
+    ['scanner_id', 'scanner_location', 'password'],
+    ['SCN-01', 'Room 101', 'ScannerPass123']
+  ], 'scanners_template.csv');
+}
+
+function downloadCsvRows(rows, fileName) {
+  const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
+function escapeCsvValue(value) {
+  const normalized = value === undefined || value === null ? '' : String(value);
+  if (!/[",\n\r]/.test(normalized)) return normalized;
+  return `"${normalized.replace(/"/g, '""')}"`;
 }

@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 // ===== ADD THIS FOR DEBUGGING =====
 const DEBUG_WS = true;  // Set to false to disable verbose logging
-
+process.env.TZ = "America/Los_Angeles";
 function wsLog(msg, data = null) {
   if (DEBUG_WS) {
     const timestamp = new Date().toISOString();
@@ -229,6 +229,146 @@ function saveSettings() {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
+function getLosAngelesDateString(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
+async function getVisibleCoursesForUser(user) {
+  if (!user) return [];
+  if (user.role === 'administrator') {
+    const result = await pool.query('SELECT id, room, period FROM courses ORDER BY period ASC, room ASC');
+    return result.rows;
+  }
+
+  const resolvedUser = await resolveUserCourseScope(user);
+  const assignedCourseIds = Array.isArray(resolvedUser.courses)
+    ? resolvedUser.courses.map(Number).filter(Number.isInteger)
+    : [];
+
+  if (!assignedCourseIds.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    'SELECT id, room, period FROM courses WHERE id = ANY($1::int[]) ORDER BY period ASC, room ASC',
+    [assignedCourseIds]
+  );
+  return result.rows;
+}
+
+async function resolveUserCourseScope(user) {
+  if (!user?.id) {
+    return user || {};
+  }
+
+  const result = await pool.query(
+    'SELECT id, role, courses FROM users WHERE id = $1',
+    [user.id]
+  );
+
+  if (!result.rows.length) {
+    return user;
+  }
+
+  return {
+    ...user,
+    role: result.rows[0].role || user.role,
+    courses: Array.isArray(result.rows[0].courses) ? result.rows[0].courses : []
+  };
+}
+
+function buildCourseScopeKey(room, period) {
+  return [String(room || '').trim(), String(period || '').trim()].join('__');
+}
+
+async function applyTeacherLogScope(rawLog, user) {
+  if (!user || user.role === 'administrator' || user.role === 'scanner' || user.scanner_id) {
+    return { ...(rawLog || {}) };
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  if (!visibleCourses.length) {
+    throw new Error('No class assignments are linked to this teacher account');
+  }
+
+  const requestedRoom = normalizeOptionalValue(rawLog?.scanner_location);
+  const requestedPeriod = normalizeOptionalValue(rawLog?.period);
+  let matchedCourse = null;
+
+  if (requestedRoom && requestedPeriod) {
+    matchedCourse = visibleCourses.find(course => buildCourseScopeKey(course.room, course.period) === buildCourseScopeKey(requestedRoom, requestedPeriod));
+  } else if (visibleCourses.length === 1) {
+    [matchedCourse] = visibleCourses;
+  } else {
+    throw new Error('Room and period are required for teachers assigned to multiple classes');
+  }
+
+  if (!matchedCourse) {
+    throw new Error('This log is outside the teacher\'s assigned room and period');
+  }
+
+  return {
+    ...(rawLog || {}),
+    scanner_location: matchedCourse.room,
+    period: matchedCourse.period,
+    scanner_id: normalizeOptionalValue(rawLog?.scanner_id) || `TEACHER-${user.id}`
+  };
+}
+
+async function assertUserCanManageLog(user, logId) {
+  const result = await pool.query('SELECT id, scanner_location, period FROM logs WHERE id = $1', [logId]);
+  if (!result.rows.length) {
+    const error = new Error('Log entry not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!user || user.role === 'administrator') {
+    return result.rows[0];
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  const allowedKeys = new Set(visibleCourses.map(course => buildCourseScopeKey(course.room, course.period)));
+  const logKey = buildCourseScopeKey(result.rows[0].scanner_location, result.rows[0].period);
+
+  if (!allowedKeys.has(logKey)) {
+    const error = new Error('You can only manage logs for your assigned classes');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return result.rows[0];
+}
+
+function filterLogsForCourses(logs, courses) {
+  const allowedKeys = new Set(courses.map(course => buildCourseScopeKey(course.room, course.period)));
+  return logs.filter(log => allowedKeys.has(buildCourseScopeKey(log.scanner_location, log.period)));
+}
+
+async function getVisibleLogsForUser(user) {
+  const result = await pool.query(`
+    SELECT *
+    FROM logs
+  `);
+
+  if (!user || user.role === 'administrator') {
+    return result.rows.sort(compareLogsChronologically);
+  }
+
+  const visibleCourses = await getVisibleCoursesForUser(user);
+  return filterLogsForCourses(result.rows, visibleCourses).sort(compareLogsChronologically);
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -453,7 +593,6 @@ async function getPeriodsForDate(dateString) {
 }
 
 function getPeriodsToday() {
-  const today = new Date().toISOString().split('T')[0];
   return extractPeriods(calendarCache.data?.events) || getFallbackPeriods();
 }
 
@@ -475,6 +614,41 @@ function extractLogTimeValue(value) {
   if (!normalized) return null;
   const parts = normalized.split(' ');
   return parts.length > 1 ? parts[parts.length - 1] : normalized;
+}
+
+function normalizeLogDateValue(value) {
+  const normalized = normalizeOptionalValue(value);
+  if (!normalized) return null;
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return normalized;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function normalizeLogTimeValue(value) {
+  const normalized = normalizeOptionalValue(value);
+  if (!normalized) return null;
+  const extracted = extractLogTimeValue(normalized);
+  const converted = convertTo24HourFormat(extracted);
+  const match = String(converted).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return converted;
+  const hours = String(match[1]).padStart(2, '0');
+  const minutes = match[2];
+  const seconds = match[3] || '00';
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function getLogTimestampValue(log) {
+  const dateValue = normalizeLogDateValue(log?.date_scanned);
+  const timeValue = normalizeLogTimeValue(log?.time_scanned);
+  if (!dateValue || !timeValue) return Number.NEGATIVE_INFINITY;
+  const timestamp = Date.parse(`${dateValue}T${timeValue}`);
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
+function compareLogsChronologically(left, right) {
+  const timestampDiff = getLogTimestampValue(right) - getLogTimestampValue(left);
+  if (timestampDiff !== 0) return timestampDiff;
+  return Number(right?.id || 0) - Number(left?.id || 0);
 }
 
 function normalizeOptionalValue(value) {
@@ -624,11 +798,257 @@ function convertTo24HourFormat(time12h) {
   return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
 }
 
+function convertToCsv(logs) {
+  const header = [
+    'ID',
+    'Date Scanned',
+    'Time Scanned',
+    'Student ID',
+    'First Name',
+    'Last Name',
+    'Period',
+    'Scanner Location',
+    'Scanner ID',
+    'Status'
+  ];
+  const rows = logs.map(log => [
+    log.id,
+    log.date_scanned,
+    normalizeLogTimeValue(log.time_scanned),
+    log.student_id,
+    log.first_name,
+    log.last_name,
+    log.period,
+    log.scanner_location,
+    log.scanner_id,
+    log.status
+  ]);
+  const csvContent = [header, ...rows]
+    .map(row => row.map(escapeCsvValue).join(','))
+    .join("\n");
+  return csvContent;
+}
+
+function escapeCsvValue(value) {
+  const normalized = value === undefined || value === null ? '' : String(value);
+  if (!/[",\n\r]/.test(normalized)) return normalized;
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function normalizeRequiredString(value, fieldLabel) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    throw new Error(`${fieldLabel} is required`);
+  }
+  return normalized;
+}
+
+function parseCourseAssignments(courses) {
+  if (courses === undefined || courses === null || courses === '') return [];
+  if (Array.isArray(courses)) {
+    return courses
+      .map(course => Number(course))
+      .filter(course => Number.isInteger(course) && course > 0);
+  }
+  return String(courses)
+    .split(/[|;,]/)
+    .map(part => Number(part.trim()))
+    .filter(course => Number.isInteger(course) && course > 0);
+}
+
+async function sanitizeCourseAssignments(courses) {
+  const parsedCourseIds = [...new Set(parseCourseAssignments(courses))];
+  if (!parsedCourseIds.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    'SELECT id FROM courses WHERE id = ANY($1::int[])',
+    [parsedCourseIds]
+  );
+
+  const validCourseIds = new Set(
+    result.rows
+      .map(row => Number(row.id))
+      .filter(Number.isInteger)
+  );
+
+  return parsedCourseIds.filter(id => validCourseIds.has(id));
+}
+
+async function createStudentAccount(payload) {
+  let { student_id, first_name, last_name, password, uuid } = payload;
+  student_id = normalizeRequiredString(student_id, 'Student ID');
+  first_name = normalizeRequiredString(first_name, 'First name');
+  last_name = normalizeRequiredString(last_name, 'Last name');
+  password = normalizeRequiredString(password, 'Password');
+  uuid = normalizeOptionalValue(uuid);
+
+  const hashedPassword = await bcryptjs.hash(password, 10);
+  const result = await pool.query(`
+    INSERT INTO students (student_id, first_name, last_name, password_hash, uuid)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id, student_id, first_name, last_name
+  `, [student_id, first_name, last_name, hashedPassword, uuid]);
+
+  return result.rows[0];
+}
+
+async function createScannerAccount(payload) {
+  let { scanner_id, scanner_location, scanner_password, password } = payload;
+  scanner_id = normalizeRequiredString(scanner_id, 'Scanner ID');
+  scanner_location = normalizeRequiredString(scanner_location, 'Scanner location');
+  const rawPassword = normalizeRequiredString(scanner_password ?? password, 'Scanner password');
+
+  const hashedPassword = await bcryptjs.hash(rawPassword, 10);
+  const result = await pool.query(`
+    INSERT INTO scanners (scanner_id, scanner_location, password_hash)
+    VALUES ($1, $2, $3)
+    RETURNING id, scanner_id, scanner_location
+  `, [scanner_id, scanner_location, hashedPassword]);
+
+  return result.rows[0];
+}
+
+async function createWebUserAccount(payload) {
+  let { email, first_name, last_name, password, role, courses } = payload;
+  email = normalizeRequiredString(email, 'Email').toLowerCase();
+  first_name = normalizeRequiredString(first_name, 'First name');
+  last_name = normalizeRequiredString(last_name, 'Last name');
+  password = normalizeRequiredString(password, 'Password');
+  role = normalizeRequiredString(role, 'Role').toLowerCase();
+  if (!['teacher', 'administrator'].includes(role)) {
+    throw new Error('Role must be teacher or administrator');
+  }
+
+  const courseArray = role === 'teacher' ? await sanitizeCourseAssignments(courses) : [];
+  const hashedPassword = await bcryptjs.hash(password, 10);
+  const result = await pool.query(`
+    INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, email, first_name, last_name, role, courses
+  `, [email, first_name, last_name, hashedPassword, role, courseArray]);
+
+  return result.rows[0];
+}
+
+async function buildPreparedLogEntry(rawLog, options = {}) {
+  const {
+    requireStudentId = true,
+    requireScannerFields = true
+  } = options;
+  let {
+    period,
+    scanner_location,
+    scanner_id,
+    student_id,
+    first_name,
+    last_name,
+    time_scanned,
+    date_scanned,
+    status
+  } = rawLog;
+
+  period = normalizeOptionalValue(period);
+  status = normalizeOptionalValue(status);
+  first_name = normalizeOptionalValue(first_name);
+  last_name = normalizeOptionalValue(last_name);
+  scanner_location = normalizeOptionalValue(scanner_location);
+  scanner_id = normalizeOptionalValue(scanner_id);
+  student_id = normalizeOptionalValue(student_id);
+  date_scanned = normalizeLogDateValue(date_scanned);
+  time_scanned = normalizeLogTimeValue(time_scanned);
+
+  if (requireStudentId && !student_id) {
+    throw new Error('Student ID is required');
+  }
+
+  if (requireScannerFields && (!scanner_location || !scanner_id)) {
+    throw new Error('Scanner location and scanner ID are required');
+  }
+
+  if (student_id && (!first_name || !last_name)) {
+    const studentLookup = await pool.query(
+      'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
+      [student_id]
+    );
+    if (studentLookup.rows.length > 0) {
+      first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
+      last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
+    } else {
+      const priorLogLookup = await pool.query(`
+        SELECT first_name, last_name
+        FROM logs
+        WHERE student_id = $1
+          AND first_name IS NOT NULL
+          AND BTRIM(first_name) <> ''
+          AND last_name IS NOT NULL
+          AND BTRIM(last_name) <> ''
+        ORDER BY id DESC
+        LIMIT 1
+      `, [student_id]);
+      if (priorLogLookup.rows.length > 0) {
+        first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
+        last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
+      }
+    }
+  }
+
+  if (date_scanned && time_scanned) {
+    const fullTimestamp = `${date_scanned} ${time_scanned}`;
+    const periods = await getPeriodsForDate(date_scanned);
+    const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
+    if (computed) {
+      period = period || computed;
+    } else {
+      console.log('Could not compute period for new log, will fill later');
+    }
+  }
+
+  return {
+    period,
+    scanner_location,
+    scanner_id,
+    student_id,
+    first_name,
+    last_name,
+    time_scanned,
+    date_scanned,
+    status
+  };
+}
+
+async function insertPreparedLogEntry(preparedLog) {
+  await pool.query(`
+    INSERT INTO logs (
+      period,
+      scanner_location,
+      scanner_id,
+      student_id,
+      first_name,
+      last_name,
+      time_scanned,
+      date_scanned,
+      status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [
+    preparedLog.period,
+    preparedLog.scanner_location,
+    preparedLog.scanner_id,
+    preparedLog.student_id,
+    preparedLog.first_name,
+    preparedLog.last_name,
+    preparedLog.time_scanned,
+    preparedLog.date_scanned,
+    preparedLog.status
+  ]);
+}
+
 
 
 /*-------------------------------------- Encryption Functions --------------------------------------*/
 function getDailyKey(dateString = null) {
-  const date = dateString || new Date().toISOString().split('T')[0];
+  const date = dateString || getLosAngelesDateString();
   return crypto
     .createHmac('sha256', MASTER_KEY)
     .update(date)
@@ -647,7 +1067,7 @@ function encrypt(text) {
     encryptedData: encrypted,
     iv: iv.toString('hex'),
     authTag: authTag.toString('hex'),
-    date: new Date().toISOString().split('T')[0]
+    date: getLosAngelesDateString()
   };
 }
 
@@ -667,25 +1087,30 @@ function decrypt(encryptedData, ivHex, authTagHex, date) {
 
 /*---------------------------------------- App Authentication ----------------------------------------------*/
 app.post('/api/students', verifyToken, requireRole('administrator'), async (req, res) => {
-  let { student_id, first_name, last_name, password, uuid } = req.body;
-  if (!student_id || !password || !first_name || !last_name) {
-    return res.status(400).json({error: 'All fields required'});
-  }
-  if (!uuid){
-    uuid = uuid || null;
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(password, 10);
-    const result = await pool.query(`
-      INSERT INTO students (student_id, first_name, last_name, password_hash, uuid)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, student_id, first_name, last_name
-      `, [student_id, first_name, last_name, hashedPassword, uuid]);
-    res.status(201).json(result.rows[0]);
+    const createdStudent = await createStudentAccount(req.body);
+    res.status(201).json(createdStudent);
   }
   catch (err){
     console.error(err);
-    res.status(500).json({ error: 'Failed to create student'});
+    res.status(500).json({ error: err.message || 'Failed to create student'});
+  }
+});
+
+app.post('/api/students/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.students) ? req.body.students : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No student rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createStudentAccount(row);
+    }
+    res.status(201).json({ message: 'Students uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to upload students' });
   }
 });
 
@@ -889,22 +1314,34 @@ app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administr
 
 /*---------------------------------------- Scanner Authentication ----------------------------------------------*/
 app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { SCANNER_ID, SCANNER_LOCATION, SCANNER_PASSWORD } = req.body;
-  if (!SCANNER_ID || !SCANNER_LOCATION || !SCANNER_PASSWORD) {
-    return res.status(400).json({error: 'All fields required'});
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(SCANNER_PASSWORD, 10);
-    const result = await pool.query(`
-      INSERT INTO scanners (scanner_id, scanner_location, password_hash)
-      VALUES ($1, $2, $3)
-      RETURNING id, scanner_id, scanner_location
-      `, [SCANNER_ID, SCANNER_LOCATION, hashedPassword]);
-    res.status(201).json(result.rows[0]);
+    const createdScanner = await createScannerAccount({
+      scanner_id: req.body.SCANNER_ID,
+      scanner_location: req.body.SCANNER_LOCATION,
+      scanner_password: req.body.SCANNER_PASSWORD
+    });
+    res.status(201).json(createdScanner);
   }
   catch (err){
     console.error(err);
-    res.status(500).json({ error: 'Failed to create scanner'});
+    res.status(500).json({ error: err.message || 'Failed to create scanner'});
+  }
+});
+
+app.post('/api/scanners/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.scanners) ? req.body.scanners : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No scanner rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createScannerAccount(row);
+    }
+    res.status(201).json({ message: 'Scanners uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to upload scanners' });
   }
 });
 
@@ -1001,7 +1438,8 @@ app.post('/api/scanner/auth/login', async (req, res) => {
     const token = jwt.sign(
       { 
         id: scanner.id,
-        scanner_id: scanner.scanner_id
+        scanner_id: scanner.scanner_id,
+        role: 'scanner'
       },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
@@ -1009,6 +1447,7 @@ app.post('/api/scanner/auth/login', async (req, res) => {
     req.session.user = {
       id: scanner.id,
       scanner_id: scanner.scanner_id,
+      role: 'scanner',
       token: token
     };
     res.json({ 
@@ -1016,7 +1455,8 @@ app.post('/api/scanner/auth/login', async (req, res) => {
       token: token,
       user: {
         id: scanner.id,
-        scanner_id: scanner.scanner_id
+        scanner_id: scanner.scanner_id,
+        role: 'scanner'
       }
     });
   } catch (err) {
@@ -1219,7 +1659,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         email: user.email, 
         role: user.role,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        courses: Array.isArray(user.courses) ? user.courses : []
       },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
@@ -1230,6 +1671,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       role: user.role,
       firstName: user.first_name,
       lastName: user.last_name,
+      courses: Array.isArray(user.courses) ? user.courses : [],
       token: token
     };
     res.json({ 
@@ -1240,7 +1682,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         email: user.email,
         role: user.role,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        courses: Array.isArray(user.courses) ? user.courses : []
       }
     });
   } catch (err) {
@@ -1278,28 +1721,35 @@ app.get('/api/auth/me', verifyToken, async (req, res) => {
 
 /*-------User Management Endpoints-------*/
 app.post('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
-  const { email, first_name, last_name, password, role, courses } = req.body;
-  if (!email || !password || !first_name || !last_name || !role) {
-    return res.status(400).json({ error: 'All fields required' });
-  }
-  if (!['teacher', 'administrator'].includes(role)) {
-    return res.status(400).json({ error: 'Invalid role' });
-  }
   try {
-    const hashedPassword = await bcryptjs.hash(password, 10);
-    const courseArray = role === 'teacher' && courses ? courses : [];
-    const result = await pool.query(`
-      INSERT INTO users (email, first_name, last_name, password_hash, role, courses)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, email, first_name, last_name, role, courses
-    `, [email.toLowerCase(), first_name, last_name, hashedPassword, role, courseArray]);
-    res.status(201).json(result.rows[0]);
+    const createdUser = await createWebUserAccount(req.body);
+    res.status(201).json(createdUser);
   } catch (err) {
     console.error(err);
     if (err.code === '23505') {
       return res.status(400).json({ error: 'Email already exists' });
     }
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+app.post('/api/users/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
+  const rows = Array.isArray(req.body?.users) ? req.body.users : [];
+  if (!rows.length) {
+    return res.status(400).json({ error: 'No user rows were provided' });
+  }
+
+  try {
+    for (const row of rows) {
+      await createWebUserAccount(row);
+    }
+    res.status(201).json({ message: 'Users uploaded successfully', inserted: rows.length });
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'One or more emails already exist' });
+    }
+    res.status(500).json({ error: err.message || 'Failed to upload users' });
   }
 });
 
@@ -1329,6 +1779,15 @@ app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
 app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { email, first_name, last_name, password, role, courses } = req.body;
   try {
+    let existingUserRole = null;
+    if (courses !== undefined && role === undefined) {
+      const existingUser = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+      if (!existingUser.rows.length) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      existingUserRole = existingUser.rows[0].role;
+    }
+
     let query = 'UPDATE users SET ';
     let params = [];
     let paramCount = 1;
@@ -1362,7 +1821,10 @@ app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
       paramCount++;
     }
     if (courses !== undefined) {
-      const courseArray = role === 'teacher' && courses ? courses : [];
+      const effectiveRole = role !== undefined ? role : existingUserRole;
+      const courseArray = effectiveRole === 'teacher'
+        ? await sanitizeCourseAssignments(courses)
+        : [];
       query += `courses = $${paramCount}, `;
       params.push(courseArray);
       paramCount++;
@@ -1452,8 +1914,8 @@ app.post('/api/courses', verifyToken, requireRole('administrator'), async (req, 
 
 app.get('/api/courses', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, room, period FROM courses ORDER BY period ASC, room ASC');
-    res.json(result.rows);
+    const courses = await getVisibleCoursesForUser(req.user);
+    res.json(courses);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch courses' });
@@ -1477,7 +1939,7 @@ app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async 
 /*-------Calendar Endpoints-------*/
 app.get('/api/calendar/today', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLosAngelesDateString();
     const periods = await getPeriodsForDate(today);
     res.json({
       events: periods,
@@ -1489,8 +1951,36 @@ app.get('/api/calendar/today', async (req, res) => {
     res.json({
       events: getFallbackPeriods(),
       lastUpdated: new Date().toISOString(),
-      date: new Date().toISOString().split('T')[0]
+      date: getLosAngelesDateString()
     });
+  }
+});
+
+app.put('/api/courses/:id', verifyToken, requireRole('administrator'), async (req, res) => {
+  const { room, period } = req.body;
+  if (!room || !period) {
+    return res.status(400).json({ error: 'Room and period are required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE courses
+      SET room = $1, period = $2
+      WHERE id = $3
+      RETURNING id, room, period
+    `, [room, period, req.params.id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'This course already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update course' });
   }
 });
 
@@ -1499,111 +1989,99 @@ app.get('/api/calendar/today', async (req, res) => {
 /*-------Log Endpoints-------*/
 app.get('/api/logs', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      ORDER BY date_scanned DESC, time_scanned DESC
-    `);
-    res.json(result.rows);
+    const logs = await getVisibleLogsForUser(req.user);
+    res.json(logs);
   } catch (err) {
     console.error('Error fetching logs:', err);
     res.status(500).json({ error: 'Failed to fetch logs' });
   }
 });
 
-app.post('/api/logs', verifyToken, async (req, res) => {
-  let {
-    period,
-    scanner_location,
-    scanner_id,
-    student_id,
-    first_name,
-    last_name,
-    time_scanned,
-    date_scanned,
-    status
-  } = req.body;
+app.get('/api/logs/csv', verifyToken, async (req, res) => {
   try {
-    period = normalizeOptionalValue(period);
-    status = normalizeOptionalValue(status);
-    first_name = normalizeOptionalValue(first_name);
-    last_name = normalizeOptionalValue(last_name);
-    scanner_location = normalizeOptionalValue(scanner_location);
-    scanner_id = normalizeOptionalValue(scanner_id);
-    student_id = normalizeOptionalValue(student_id);
-    date_scanned = normalizeOptionalValue(date_scanned);
-    time_scanned = normalizeOptionalValue(time_scanned);
+    const logs = await getVisibleLogsForUser(req.user);
+    const csv = convertToCsv(logs);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=logs.csv');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error fetching logs for CSV:', err);
+    res.status(500).json({ error: 'Failed to fetch logs for CSV' });
+  }
+});
 
-    if (student_id && (!first_name || !last_name)) {
-      const studentLookup = await pool.query(
-        'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
-        [student_id]
-      );
-      if (studentLookup.rows.length > 0) {
-        first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
-        last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
-      } else {
-        const priorLogLookup = await pool.query(`
-          SELECT first_name, last_name
-          FROM logs
-          WHERE student_id = $1
-            AND first_name IS NOT NULL
-            AND BTRIM(first_name) <> ''
-            AND last_name IS NOT NULL
-            AND BTRIM(last_name) <> ''
-          ORDER BY id DESC
-          LIMIT 1
-        `, [student_id]);
-        if (priorLogLookup.rows.length > 0) {
-          first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
-          last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
-        }
-      }
-    }
-
-    if (date_scanned && time_scanned) {
-      const time24h = convertTo24HourFormat(time_scanned);
-      time_scanned = time24h;
-      const fullTimestamp = `${date_scanned} ${time24h}`;
-      const periods = await getPeriodsForDate(date_scanned);
-      const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
-      if (computed) {
-        period = period || computed;
-        //console.log(`Computed period for new log: ${period}`);
-      } else {
-        console.log('Could not compute period for new log, will fill later');
-      }
-    }
-    await pool.query(`
-      INSERT INTO logs (
-        period,
-        scanner_location,
-        scanner_id,
-        student_id,
-        first_name,
-        last_name,
-        time_scanned,
-        date_scanned,
-        status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `, [period, scanner_location, scanner_id, student_id, first_name, last_name, time_scanned, date_scanned, status]);
+app.post('/api/logs', verifyToken, async (req, res) => {
+  try {
+    const scopedPayload = await applyTeacherLogScope(req.body, req.user);
+    const preparedLog = await buildPreparedLogEntry(scopedPayload);
+    await insertPreparedLogEntry(preparedLog);
     await assignPeriodsToLogs();
     await assignStatusesToLogs();
     res.status(201).json({ message: 'Log entry created successfully' });
   } catch (err) {
     console.error('Error creating log entry:', err);
-    res.status(500).json({ error: 'Failed to create log entry' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create log entry' });
+  }
+});
+
+app.post('/api/logs/bulk', verifyToken, async (req, res) => {
+  const incomingLogs = Array.isArray(req.body?.logs) ? req.body.logs : [];
+  if (!incomingLogs.length) {
+    return res.status(400).json({ error: 'No log rows were provided' });
+  }
+
+  try {
+    for (let index = 0; index < incomingLogs.length; index += 1) {
+      const scopedPayload = await applyTeacherLogScope(incomingLogs[index], req.user);
+      const preparedLog = await buildPreparedLogEntry(scopedPayload, {
+        requireStudentId: true,
+        requireScannerFields: false
+      });
+      await insertPreparedLogEntry(preparedLog);
+    }
+    await assignPeriodsToLogs();
+    await assignStatusesToLogs();
+    res.status(201).json({ message: 'CSV logs uploaded successfully', inserted: incomingLogs.length });
+  } catch (err) {
+    console.error('Error uploading CSV logs:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload CSV logs' });
   }
 });
 
 app.delete('/api/logs/:id', verifyToken, async (req, res) => {
   const logId = req.params.id;
   try {
+    await assertUserCanManageLog(req.user, logId);
     await pool.query('DELETE FROM logs WHERE id = $1', [logId]);
     res.json({ message: 'Log entry deleted successfully' });
   } catch (err) {
     console.error('Error deleting log entry:', err);
-    res.status(500).json({ error: 'Failed to delete log entry' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Failed to delete log entry' });
+  }
+});
+
+app.post('/api/admin/logs/clear', verifyToken, requireRole('administrator'), async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM logs');
+    res.json({ message: 'All logs deleted successfully', deleted: result.rowCount || 0 });
+  } catch (err) {
+    console.error('Error clearing logs:', err);
+    res.status(500).json({ error: 'Failed to clear logs' });
+  }
+});
+
+app.post('/api/admin/reindex', verifyToken, requireRole('administrator'), async (req, res) => {
+  const databaseName = String(process.env.DB_NAME || '').trim();
+  if (!databaseName || !/^[a-zA-Z0-9_]+$/.test(databaseName)) {
+    return res.status(500).json({ error: 'Database name is not configured for reindexing' });
+  }
+
+  try {
+    await pool.query(`REINDEX DATABASE ${databaseName}`);
+    res.json({ message: `Database ${databaseName} reindexed successfully` });
+  } catch (err) {
+    console.error('Error reindexing database:', err);
+    res.status(500).json({ error: 'Failed to reindex database' });
   }
 });
 
@@ -1629,13 +2107,39 @@ app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
 
 app.get('/api/logs/analytics', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT first_name, last_name, scanner_location, student_id, period, COUNT(*) AS total
-      FROM logs
-      GROUP BY first_name, last_name, scanner_location, student_id, period
-      ORDER BY first_name ASC, last_name ASC, period ASC
-    `);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    const totals = new Map();
+
+    visibleLogs.forEach(log => {
+      const key = [
+        log.first_name || '',
+        log.last_name || '',
+        log.scanner_location || '',
+        log.student_id || '',
+        log.period || ''
+      ].join('__');
+
+      if (!totals.has(key)) {
+        totals.set(key, {
+          first_name: log.first_name,
+          last_name: log.last_name,
+          scanner_location: log.scanner_location,
+          student_id: log.student_id,
+          period: log.period,
+          total: 0
+        });
+      }
+
+      totals.get(key).total += 1;
+    });
+
+    res.json(
+      Array.from(totals.values()).sort((left, right) =>
+        `${left.first_name || ''}${left.last_name || ''}${left.period || ''}`.localeCompare(
+          `${right.first_name || ''}${right.last_name || ''}${right.period || ''}`
+        )
+      )
+    );
   } catch (err) {
     console.error('Error fetching analytics:', err);
     res.status(500).json({ error: 'Failed to fetch analytics' });
@@ -1645,12 +2149,8 @@ app.get('/api/logs/analytics', verifyToken, async (req, res) => {
 app.get('/api/logs/:room', verifyToken, async (req, res) => {
   const { room } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1
-    `, [room]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(visibleLogs.filter(log => String(log.scanner_location || '') === String(room)));
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -1660,12 +2160,13 @@ app.get('/api/logs/:room', verifyToken, async (req, res) => {
 app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
   const { room, period } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1 AND period = $2
-    `, [room, period]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(
+      visibleLogs.filter(log =>
+        String(log.scanner_location || '') === String(room) &&
+        String(log.period || '') === String(period)
+      )
+    );
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -1675,12 +2176,14 @@ app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
 app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
   const { room, period, date } = req.params;
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM logs
-      WHERE scanner_location = $1 AND period = $2 AND date_scanned = $3
-    `, [room, period, date]);
-    res.json(result.rows);
+    const visibleLogs = await getVisibleLogsForUser(req.user);
+    res.json(
+      visibleLogs.filter(log =>
+        String(log.scanner_location || '') === String(room) &&
+        String(log.period || '') === String(period) &&
+        String(log.date_scanned || '') === String(date)
+      )
+    );
   } catch (err) {
     console.error('Error fetching logs for room and period:', err);
     res.status(500).json({ error: 'Failed to fetch logs for room and period' });
@@ -1727,7 +2230,11 @@ app.get('/analytics', redirectIfNotAuthenticated, (req, res) => {
 });
 
 app.get('/master_logs', redirectIfNotAuthenticated, requireRole('administrator'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'pages', 'master_logs.html'));
+res.sendFile(path.join(__dirname, 'public', 'pages', 'master_logs.html'));
+});
+
+app.get('/my_logs', redirectIfNotAuthenticated, (req, res) => {
+res.sendFile(path.join(__dirname, 'public', 'pages', 'teacher_logs.html'));
 });
 
 app.get('/calendar', redirectIfNotAuthenticated, (req, res) => {

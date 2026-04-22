@@ -16,6 +16,11 @@
                 <h1>Admin Center</h1>
                 <p class="page-subtitle">Manage users, course assignments, and attendance system settings from a unified operations page.</p>
             </div>
+            <div class="management-toolbar">
+                <input type="file" id="userCsvInput" accept=".csv,text/csv" hidden>
+                <button type="button" id="uploadUsersBtn" class="secondary-btn"><i class="fas fa-file-upload"></i> Upload Web Users</button>
+                <button type="button" id="downloadUsersTemplateBtn" class="secondary-btn"><i class="fas fa-file-arrow-down"></i> User Template</button>
+            </div>
         </section>
 
         <section class="management-grid">
@@ -94,13 +99,27 @@
                     <p id="settingsMessage" class="management-message"></p>
                 </form>
             </section>
+
+            <section class="glass-panel management-card">
+                <div class="panel-title"><h2>Database Maintenance</h2></div>
+                <p class="management-copy">Run maintenance tasks for the live database and clear attendance logs when you intentionally need a clean slate.</p>
+                <div class="button-row">
+                    <button type="button" id="reindexDatabaseBtn" class="soft-button"><i class="fas fa-database"></i> Reindex Database</button>
+                    <button type="button" id="clearAllLogsBtn" class="danger-button"><i class="fas fa-trash"></i> Delete All Logs</button>
+                </div>
+                <p id="maintenanceMessage" class="management-message"></p>
+            </section>
         </section>
     </main>
 
     <div id="editUserModal" class="modal surface-modal">
         <div class="modal-content">
             <span class="close-btn" id="closeEditUserModal">&times;</span>
-            <div class="panel-title"><h2>Edit User</h2></div>
+            <div class="modal-header">
+                <p class="modal-kicker">BluePrint Admin</p>
+                <div class="panel-title"><h2>Edit User</h2></div>
+                <p class="modal-subtitle">Update account details, role access, and classroom assignments without leaving the operations view.</p>
+            </div>
             <form id="editUserForm" class="management-form">
                 <div class="form-group"><label>Email</label><input type="email" id="edit_user_email" required></div>
                 <div class="form-group"><label>First Name</label><input type="text" id="edit_user_first_name" required></div>
@@ -123,8 +142,41 @@
             </form>
         </div>
     </div>
+    <div id="editCourseModal" class="modal surface-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeEditCourseModal">&times;</span>
+            <div class="modal-header">
+                <p class="modal-kicker">BluePrint Admin</p>
+                <div class="panel-title"><h2>Edit Course</h2></div>
+                <p class="modal-subtitle">Refine the room and period pairing that teachers and logs use across the app.</p>
+            </div>
+            <form id="editCourseForm" class="management-form">
+                <div class="form-group"><label>Room Number</label><input type="text" id="edit_course_room" required></div>
+                <div class="form-group">
+                    <label>Period</label>
+                    <select id="edit_course_period" required>
+                        <option value="">Select a period...</option>
+                        <option value="Period 1">Period 1</option>
+                        <option value="Period 2">Period 2</option>
+                        <option value="Period 3">Period 3</option>
+                        <option value="Period 4">Period 4</option>
+                        <option value="Period 5">Period 5</option>
+                        <option value="Period 6">Period 6</option>
+                        <option value="Period 7">Period 7</option>
+                        <option value="Academic Support">Academic Support</option>
+                        <option value="School Wide Mass">School Wide Mass</option>
+                        <option value="Faith Family">Faith Family</option>
+                        <option value="Club">Club</option>
+                    </select>
+                </div>
+                <div class="button-row"><button type="submit" class="primary-btn"><i class="fas fa-save"></i> Update Course</button></div>
+                <p id="editCourseMessage" class="management-message"></p>
+            </form>
+        </div>
+    </div>
     <script>
         let currentEditingUserId = null;
+        let currentEditingCourseId = null;
         let allCourses = [];
         const token = localStorage.getItem('auth_token');
         document.addEventListener('DOMContentLoaded', async () => {
@@ -132,8 +184,50 @@
             await loadUsers();
             await loadSettings();
             setupCourseForm();
+            setupCourseEditForm();
             setupRoleToggle();
+            bindBulkAdminActions();
         });
+
+        function bindBulkAdminActions() {
+            document.getElementById('uploadUsersBtn').addEventListener('click', () => {
+                document.getElementById('userCsvInput').click();
+            });
+            document.getElementById('downloadUsersTemplateBtn').addEventListener('click', downloadUsersTemplate);
+            document.getElementById('userCsvInput').addEventListener('change', handleUserCsvUpload);
+            document.getElementById('reindexDatabaseBtn').addEventListener('click', reindexDatabase);
+            document.getElementById('clearAllLogsBtn').addEventListener('click', clearAllLogs);
+        }
+
+        function normalizeCourseCollection(courses) {
+            const byId = new Map();
+            (Array.isArray(courses) ? courses : []).forEach(course => {
+                const id = Number(course?.id);
+                if (!Number.isInteger(id) || byId.has(id)) return;
+                byId.set(id, {
+                    ...course,
+                    id
+                });
+            });
+            return Array.from(byId.values()).sort((left, right) => {
+                const leftLabel = `${left.room || ''} ${left.period || ''}`.trim();
+                const rightLabel = `${right.room || ''} ${right.period || ''}`.trim();
+                return leftLabel.localeCompare(rightLabel);
+            });
+        }
+
+        function formatAssignedCourses(courseIds) {
+            const normalizedIds = [...new Set((Array.isArray(courseIds) ? courseIds : []).map(value => Number(value)).filter(Number.isInteger))];
+            if (!normalizedIds.length) return '';
+
+            const courseMap = new Map(normalizeCourseCollection(allCourses).map(course => [course.id, course]));
+            const labels = normalizedIds.map(id => {
+                const course = courseMap.get(id);
+                return course ? `Room ${course.room} - ${course.period}` : `Missing course #${id}`;
+            });
+
+            return [...new Set(labels)].join(', ');
+        }
         
         function setupRoleToggle() {
             document.getElementById('user_role').addEventListener('change', (e) => {
@@ -159,6 +253,31 @@
                     <span>Room ${course.room} - ${course.period}</span>
                 </label>
             `).join('');
+        }
+
+        function getSelectedCourseIds(containerSelector) {
+            return Array.from(document.querySelectorAll(`${containerSelector} .course-checkbox:checked`))
+                .map(checkbox => String(checkbox.value));
+        }
+
+        function syncCourseAssignmentLists() {
+            const coursesGroup = document.getElementById('coursesGroup');
+            if (coursesGroup.style.display !== 'none') {
+                const selectedAddCourses = getSelectedCourseIds('#coursesList');
+                populateCoursesCheckboxes('coursesList');
+                document.querySelectorAll('#coursesList .course-checkbox').forEach(checkbox => {
+                    checkbox.checked = selectedAddCourses.includes(String(checkbox.value));
+                });
+            }
+
+            const editCoursesGroup = document.getElementById('editCoursesGroup');
+            if (editCoursesGroup.style.display !== 'none') {
+                const selectedEditCourses = getSelectedCourseIds('#editCoursesList');
+                populateCoursesCheckboxes('editCoursesList');
+                document.querySelectorAll('#editCoursesList .course-checkbox').forEach(checkbox => {
+                    checkbox.checked = selectedEditCourses.includes(String(checkbox.value));
+                });
+            }
         }
         
         function setupCourseForm() {
@@ -187,7 +306,10 @@
                     messageEl.textContent = 'Course added successfully!';
                     document.getElementById('addCourseForm').reset();
                     setTimeout(() => {
-                        loadCourses();
+                        loadCourses().then(() => {
+                            syncCourseAssignmentLists();
+                            loadUsers();
+                        });
                         messageEl.textContent = '';
                     }, 1000);
                 } catch (err) {
@@ -209,7 +331,7 @@
                 if (!response.ok) {
                     throw new Error('Failed to load courses');
                 }
-                allCourses = await response.json();
+                allCourses = normalizeCourseCollection(await response.json());
                 if (allCourses.length === 0) {
                     container.innerHTML = `<div class="empty-state"><h3>No Courses</h3><p>Add a course using the form on the left.</p></div>`;
                     return;
@@ -227,11 +349,18 @@
                         <tbody>
                 `;
                 allCourses.forEach(course => {
+                    const roomJson = JSON.stringify(course.room);
+                    const periodJson = JSON.stringify(course.period);
                     tableHTML += `
                         <tr>
                             <td>${course.room}</td>
                             <td>${course.period}</td>
-                            <td><div class="management-action-row"><button class="danger-button" onclick="deleteCourse(${course.id})">Delete</button></div></td>
+                            <td>
+                                <div class="management-action-row">
+                                    <button class="soft-button" onclick='editCourse(${course.id}, ${roomJson}, ${periodJson})'>Edit</button>
+                                    <button class="danger-button" onclick="deleteCourse(${course.id})">Delete</button>
+                                </div>
+                            </td>
                         </tr>
                     `;
                 });
@@ -258,11 +387,78 @@
                     alert('Failed to delete course');
                     return;
                 }
-                loadCourses();
+                loadCourses().then(() => {
+                    syncCourseAssignmentLists();
+                    loadUsers();
+                });
             } catch (err) {
                 console.error('Error deleting course:', err);
                 alert('Error deleting course');
             }
+        }
+
+        function setupCourseEditForm() {
+            const modal = document.getElementById('editCourseModal');
+            const closeBtn = document.getElementById('closeEditCourseModal');
+            const form = document.getElementById('editCourseForm');
+            const messageEl = document.getElementById('editCourseMessage');
+
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            window.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!currentEditingCourseId) return;
+
+                const room = document.getElementById('edit_course_room').value.trim();
+                const period = document.getElementById('edit_course_period').value;
+                messageEl.textContent = 'Updating course...';
+
+                try {
+                    const response = await fetch(`/api/courses/${currentEditingCourseId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ room, period })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        messageEl.textContent = data.error || 'Failed to update course';
+                        return;
+                    }
+
+                    messageEl.textContent = 'Course updated successfully!';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        messageEl.textContent = '';
+                        loadCourses().then(() => {
+                            syncCourseAssignmentLists();
+                            loadUsers();
+                        });
+                    }, 600);
+                } catch (err) {
+                    console.error(err);
+                    messageEl.textContent = 'Server error';
+                }
+            });
+        }
+
+        function editCourse(id, room, period) {
+            currentEditingCourseId = id;
+            document.getElementById('edit_course_room').value = room;
+            document.getElementById('edit_course_period').value = period;
+            document.getElementById('editCourseMessage').textContent = '';
+            document.getElementById('editCourseModal').style.display = 'flex';
         }
         document.getElementById('addUserForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -398,16 +594,13 @@
                 `;
                 users.forEach(user => {
                     const created = new Date(user.created_at).toLocaleDateString();
-                    const courses = user.courses || [];
-                    let coursesStr = '';
-                    if (courses.length && allCourses.length) {
-                        const matched = allCourses.filter(c => courses.includes(c.id));
-                        coursesStr = matched.map(c => `Room ${c.room} - ${c.period}`).join(', ');
-                    }
-                    if (!coursesStr && courses.length) {
-                        coursesStr = courses.join(', ');
-                    }
+                    const courses = Array.isArray(user.courses) ? user.courses : [];
+                    const coursesStr = formatAssignedCourses(courses);
                     const coursesJson = JSON.stringify(courses);
+                    const emailJson = JSON.stringify(user.email);
+                    const firstNameJson = JSON.stringify(user.first_name);
+                    const lastNameJson = JSON.stringify(user.last_name);
+                    const roleJson = JSON.stringify(user.role);
                     tableHTML += `
                         <tr>
                             <td>${user.email}</td>
@@ -417,8 +610,8 @@
                             <td>${created}</td>
                             <td>
                                 <div class="management-action-row">
-                                    <button class="soft-button" onclick="editUser(${user.id}, '${user.email}', '${user.first_name}', '${user.last_name}', '${user.role}', ${coursesJson})">Edit</button>
-                                    <button class="danger-button" onclick="deleteUser(${user.id}, '${user.email}')">Delete</button>
+                                    <button class="soft-button" onclick='editUser(${user.id}, ${emailJson}, ${firstNameJson}, ${lastNameJson}, ${roleJson}, ${coursesJson})'>Edit</button>
+                                    <button class="danger-button" onclick='deleteUser(${user.id}, ${emailJson})'>Delete</button>
                                 </div>
                             </td>
                         </tr>
@@ -442,12 +635,13 @@
             editUserMessage.textContent = '';
             const editCoursesGroup = document.getElementById('editCoursesGroup');
             if (role === 'teacher') {
+                const normalizedCourses = Array.isArray(courses) ? courses.map(String) : [];
                 editCoursesGroup.style.display = 'block';
                 populateCoursesCheckboxes('editCoursesList');
                 setTimeout(() => {
                     const checkboxes = document.querySelectorAll('#editCoursesList .course-checkbox');
                     checkboxes.forEach(cb => {
-                        cb.checked = courses.includes(parseInt(cb.value));
+                        cb.checked = normalizedCourses.includes(String(cb.value));
                     });
                 }, 0);
             } else {
@@ -516,6 +710,198 @@
                 messageEl.textContent = 'Server error';
             }
         });
+
+        async function handleUserCsvUpload(event) {
+            const [file] = event.target.files || [];
+            if (!file) return;
+
+            const messageEl = document.getElementById('userMessage');
+            messageEl.textContent = 'Uploading users...';
+
+            try {
+                const rows = parseCsv(await file.text());
+                const users = rows.map(row => ({
+                    email: pickCsvValue(row, ['email']),
+                    first_name: pickCsvValue(row, ['first_name', 'firstname', 'first']),
+                    last_name: pickCsvValue(row, ['last_name', 'lastname', 'last']),
+                    password: pickCsvValue(row, ['password']),
+                    role: pickCsvValue(row, ['role']),
+                    courses: pickCsvValue(row, ['courses', 'course_ids', 'courseids'])
+                })).filter(user => Object.values(user).some(Boolean));
+
+                if (!users.length) {
+                    throw new Error('No valid user rows were found in the CSV');
+                }
+
+                const response = await fetch('/api/users/bulk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ users })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload users');
+                }
+
+                messageEl.textContent = `Uploaded ${data.inserted || users.length} users successfully.`;
+                loadUsers();
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to upload users';
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        async function reindexDatabase() {
+            const messageEl = document.getElementById('maintenanceMessage');
+            messageEl.textContent = 'Reindexing database...';
+            try {
+                const response = await fetch('/api/admin/reindex', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to reindex database');
+                }
+                messageEl.textContent = data.message || 'Database reindexed successfully.';
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to reindex database';
+            }
+        }
+
+        async function clearAllLogs() {
+            if (!confirm('Delete every log entry in Master Logs? This cannot be undone.')) {
+                return;
+            }
+            const messageEl = document.getElementById('maintenanceMessage');
+            messageEl.textContent = 'Deleting all logs...';
+            try {
+                const response = await fetch('/api/admin/logs/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to delete logs');
+                }
+                messageEl.textContent = `${data.deleted || 0} logs deleted successfully.`;
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to delete logs';
+            }
+        }
+
+        function parseCsv(text) {
+            const rows = [];
+            let current = '';
+            let row = [];
+            let inQuotes = false;
+
+            for (let index = 0; index < text.length; index += 1) {
+                const char = text[index];
+                const next = text[index + 1];
+
+                if (char === '"') {
+                    if (inQuotes && next === '"') {
+                        current += '"';
+                        index += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                    continue;
+                }
+
+                if (char === ',' && !inQuotes) {
+                    row.push(current);
+                    current = '';
+                    continue;
+                }
+
+                if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && next === '\n') {
+                        index += 1;
+                    }
+                    row.push(current);
+                    if (row.some(cell => String(cell).trim() !== '')) {
+                        rows.push(row);
+                    }
+                    row = [];
+                    current = '';
+                    continue;
+                }
+
+                current += char;
+            }
+
+            row.push(current);
+            if (row.some(cell => String(cell).trim() !== '')) {
+                rows.push(row);
+            }
+
+            const [headerRow, ...dataRows] = rows;
+            if (!headerRow) return [];
+            const headers = headerRow.map(normalizeCsvHeader);
+
+            return dataRows.map(columns => {
+                const mapped = {};
+                headers.forEach((header, idx) => {
+                    mapped[header] = String(columns[idx] ?? '').trim();
+                });
+                return mapped;
+            });
+        }
+
+        function normalizeCsvHeader(value) {
+            return String(value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function pickCsvValue(row, keys) {
+            for (const key of keys) {
+                if (row[key]) return row[key];
+            }
+            return '';
+        }
+
+        function downloadUsersTemplate() {
+            downloadCsvRows([
+                ['email', 'first_name', 'last_name', 'password', 'role', 'courses'],
+                ['teacher@example.com', 'Terry', 'Teacher', 'TempPass123', 'teacher', '1|2'],
+                ['admin@example.com', 'Avery', 'Admin', 'TempPass123', 'administrator', '']
+            ], 'web_users_template.csv');
+        }
+
+        function downloadCsvRows(rows, fileName) {
+            const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function escapeCsvValue(value) {
+            const normalized = value === undefined || value === null ? '' : String(value);
+            if (!/[",\n\r]/.test(normalized)) return normalized;
+            return `"${normalized.replace(/"/g, '""')}"`;
+        }
     </script>
 </body>
 </html>

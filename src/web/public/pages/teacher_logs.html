@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Logs - BluePrint</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script defer src="/js/navbar.js"></script>
+    <script defer src="/js/teacher_logs.js"></script>
+    <link rel="icon" type="image/png" href="/images/favicon.png">
+</head>
+<body>
+    <div id="navbar"></div>
+    <main class="page-shell">
+        <section class="page-header">
+            <div>
+                <h1>My Logs</h1>
+                <p class="page-subtitle">Review attendance logs for the room and period assignments connected to your account.</p>
+            </div>
+            <div class="quick-actions">
+                <input type="file" id="teacherCsvUploadInput" accept=".csv,text/csv" hidden>
+                <button id="teacherAddLogButton" class="primary-btn">Add Log Entry</button>
+                <button id="teacherCsvUploadBtn" class="secondary-btn">CSV Upload</button>
+                <button id="teacherCsvTemplateBtn" class="secondary-btn">CSV Template</button>
+                <button id="teacherCsvDownloadBtn" class="secondary-btn">CSV Download</button>
+            </div>
+        </section>
+
+        <section class="metrics-grid" id="teacherLogMetrics"></section>
+
+        <section class="master-logs-card panel-section">
+            <div class="panel-title">
+                <h2>Assigned Class Logs</h2>
+                <div class="toolbar">
+                    <input type="search" id="teacherLogSearch" placeholder="Search student or ID">
+                    <select id="teacherRoomFilter">
+                        <option value="">All assigned rooms</option>
+                    </select>
+                    <select id="teacherPeriodFilter">
+                        <option value="">All assigned periods</option>
+                    </select>
+                    <input type="date" id="teacherDateFilter">
+                </div>
+            </div>
+            <div id="teacherLogsContent"></div>
+        </section>
+
+        <div id="teacherLogModal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn" id="closeTeacherLogModal">&times;</span>
+                <h2>Add Log Entry</h2>
+                <form id="teacherLogForm">
+                    <select id="teacherAssignedCourse" name="class_key" required>
+                        <option value="">Select an assigned class...</option>
+                    </select>
+                    <input type="text" name="student_id" placeholder="Student ID" required>
+                    <input type="text" name="first_name" placeholder="First Name (optional, auto-fill if student exists)">
+                    <input type="text" name="last_name" placeholder="Last Name (optional, auto-fill if student exists)">
+                    <select name="status">
+                        <option value="">Auto Assign</option>
+                        <option value="on-time">On Time</option>
+                        <option value="late">Late</option>
+                        <option value="absent">Absent</option>
+                        <option value="excused">Excused</option>
+                    </select>
+                    <input type="text" name="time_scanned" placeholder="Time Scanned (HH:MM:SS)">
+                    <input type="text" name="date_scanned" placeholder="Date Scanned (YYYY-MM-DD)">
+                    <button type="submit">Submit Log</button>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

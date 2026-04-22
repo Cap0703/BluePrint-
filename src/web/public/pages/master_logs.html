@@ -40,6 +40,15 @@
                         <select id="logPeriodFilter">
                             <option value="">All periods</option>
                         </select>
+                        <select id="logRoomFilter">
+                            <option value="">All rooms</option>
+                        </select>
+                        <input type="date" id="logDateFilter">
+                        <input type="file" id="csvUploadInput" accept=".csv,text/csv" hidden>
+                        <button id="csvUploadBtn" class="secondary-btn">CSV Upload</button>
+                        <button id="csvTemplateBtn" class="secondary-btn">CSV Template</button>
+                        <button id="csv" class="secondary-btn">CSV Download</button>
+                        <button id="pdf" class="secondary-btn">PDF Download</button>
                     </div>
                 </div>
                 <div id="logsContent"></div>

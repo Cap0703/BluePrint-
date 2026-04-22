@@ -16,6 +16,11 @@
                 <h1>App Settings</h1>
                 <p class="page-subtitle">Manage the student directory and core attendance app records from one operations workspace.</p>
             </div>
+            <div class="management-toolbar">
+                <input type="file" id="studentsCsvInput" accept=".csv,text/csv" hidden>
+                <button type="button" id="uploadStudentsBtn" class="secondary-btn"><i class="fas fa-file-upload"></i> Upload Students</button>
+                <button type="button" id="downloadStudentsTemplateBtn" class="secondary-btn"><i class="fas fa-file-arrow-down"></i> Student Template</button>
+            </div>
         </section>
 
         <section class="management-grid">
@@ -61,8 +66,12 @@
     <div id="editStudentModal" class="modal surface-modal">
         <div class="modal-content">
             <span class="close-btn" id="closeEditStudentModal">&times;</span>
-            <div class="panel-title">
-                <h2>Edit Student</h2>
+            <div class="modal-header">
+                <p class="modal-kicker">BluePrint Directory</p>
+                <div class="panel-title">
+                    <h2>Edit Student</h2>
+                </div>
+                <p class="modal-subtitle">Refresh student identity details, reset enrollment access, or issue a new password from one consistent panel.</p>
             </div>
             <form id="editStudentForm" class="management-form">
                 <div class="form-group">
@@ -94,7 +103,18 @@
     <script>
         let currentEditingStudentId = null;
         const token = localStorage.getItem('auth_token');
-        document.addEventListener('DOMContentLoaded', loadStudents);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStudents();
+            bindStudentBulkUpload();
+        });
+
+        function bindStudentBulkUpload() {
+            document.getElementById('uploadStudentsBtn').addEventListener('click', () => {
+                document.getElementById('studentsCsvInput').click();
+            });
+            document.getElementById('downloadStudentsTemplateBtn').addEventListener('click', downloadStudentsTemplate);
+            document.getElementById('studentsCsvInput').addEventListener('change', handleStudentsCsvUpload);
+        }
         document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const student_id = document.getElementById('student_id').value;
@@ -295,6 +315,151 @@
                 console.error('Error deleting student:', err);
                 alert('Error deleting student');
             }
+        }
+
+        async function handleStudentsCsvUpload(event) {
+            const [file] = event.target.files || [];
+            if (!file) return;
+
+            const messageEl = document.getElementById('studentMessage');
+            messageEl.textContent = 'Uploading students...';
+
+            try {
+                const rows = parseCsv(await file.text());
+                const students = rows.map(row => ({
+                    student_id: pickCsvValue(row, ['student_id', 'studentid', 'id']),
+                    first_name: pickCsvValue(row, ['first_name', 'firstname', 'first']),
+                    last_name: pickCsvValue(row, ['last_name', 'lastname', 'last']),
+                    password: pickCsvValue(row, ['password']),
+                    uuid: pickCsvValue(row, ['uuid'])
+                })).filter(student => Object.values(student).some(Boolean));
+
+                if (!students.length) {
+                    throw new Error('No valid student rows were found in the CSV');
+                }
+
+                const response = await fetch('/api/students/bulk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ students })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to upload students');
+                }
+
+                messageEl.textContent = `Uploaded ${data.inserted || students.length} students successfully.`;
+                loadStudents();
+            } catch (err) {
+                console.error(err);
+                messageEl.textContent = err.message || 'Failed to upload students';
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function parseCsv(text) {
+            const rows = [];
+            let current = '';
+            let row = [];
+            let inQuotes = false;
+
+            for (let index = 0; index < text.length; index += 1) {
+                const char = text[index];
+                const next = text[index + 1];
+
+                if (char === '"') {
+                    if (inQuotes && next === '"') {
+                        current += '"';
+                        index += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                    continue;
+                }
+
+                if (char === ',' && !inQuotes) {
+                    row.push(current);
+                    current = '';
+                    continue;
+                }
+
+                if ((char === '\n' || char === '\r') && !inQuotes) {
+                    if (char === '\r' && next === '\n') {
+                        index += 1;
+                    }
+                    row.push(current);
+                    if (row.some(cell => String(cell).trim() !== '')) {
+                        rows.push(row);
+                    }
+                    row = [];
+                    current = '';
+                    continue;
+                }
+
+                current += char;
+            }
+
+            row.push(current);
+            if (row.some(cell => String(cell).trim() !== '')) {
+                rows.push(row);
+            }
+
+            const [headerRow, ...dataRows] = rows;
+            if (!headerRow) return [];
+            const headers = headerRow.map(normalizeCsvHeader);
+
+            return dataRows.map(columns => {
+                const mapped = {};
+                headers.forEach((header, idx) => {
+                    mapped[header] = String(columns[idx] ?? '').trim();
+                });
+                return mapped;
+            });
+        }
+
+        function normalizeCsvHeader(value) {
+            return String(value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function pickCsvValue(row, keys) {
+            for (const key of keys) {
+                if (row[key]) return row[key];
+            }
+            return '';
+        }
+
+        function downloadStudentsTemplate() {
+            downloadCsvRows([
+                ['student_id', 'first_name', 'last_name', 'password', 'uuid'],
+                ['26115', 'John', 'Doe', 'StudentPass123', '']
+            ], 'students_template.csv');
+        }
+
+        function downloadCsvRows(rows, fileName) {
+            const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function escapeCsvValue(value) {
+            const normalized = value === undefined || value === null ? '' : String(value);
+            if (!/[",\n\r]/.test(normalized)) return normalized;
+            return `"${normalized.replace(/"/g, '""')}"`;
         }
     </script>
 </body>
