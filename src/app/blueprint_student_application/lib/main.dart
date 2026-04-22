@@ -331,26 +331,31 @@ Future<String> getNFCMessage (String studentID, String token) {
 
 Future<void> writeNFCTag(String message) async {
   NfcManager.instance.startSession(
+    pollingOptions: {
+      NfcPollingOption.iso14443,
+      NfcPollingOption.iso15693,
+    },
     onDiscovered: (NfcTag tag) async {
+      try {
       final ndef = Ndef.from(tag);
 
       if (ndef == null) {
         print('Tag does not support NDEF');
-        NfcManager.instance.stopSession(errorMessage: "Not NDEF");
+        NfcManager.instance.stopSession();
         return;
       }
 
       if (!ndef.isWritable) {
         print('Tag is read-only');
-        NfcManager.instance.stopSession(errorMessage: "Read only");
+        NfcManager.instance.stopSession();
         return;
       }
 
-      try {
         final record = NdefRecord.createText(message);
-
+        final messageNdef = NdefMessage([record]);
+        
         await ndef.write(
-          NdefMessage([record]),
+          messageNdef,
         );
 
         print('Successfully wrote to NFC tag');
@@ -358,7 +363,7 @@ Future<void> writeNFCTag(String message) async {
         NfcManager.instance.stopSession();
       } catch (e) {
         print('Write failed: $e');
-        NfcManager.instance.stopSession(errorMessage: e.toString());
+        NfcManager.instance.stopSession();
       }
     },
   );
