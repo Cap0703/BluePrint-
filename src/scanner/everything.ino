@@ -768,48 +768,6 @@ void connectWifi() {
   }
 }
 
-void queueOfflineLog(int studentID, String method) {
-  String dateStr, timeStr;
-  getDateTime(dateStr, timeStr);
-
-  OfflineLog entry;
-  entry.studentID = studentID;
-  strncpy(entry.method, method.c_str(), sizeof(entry.method) - 1);
-  entry.method[sizeof(entry.method) - 1] = '\0';
-  strncpy(entry.date, dateStr.c_str(), sizeof(entry.date) - 1);
-  entry.date[sizeof(entry.date) - 1] = '\0';
-  strncpy(entry.time, timeStr.c_str(), sizeof(entry.time) - 1);
-  entry.time[sizeof(entry.time) - 1] = '\0';
-
-  int count = 0;
-  File rf = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
-  if (rf) {
-    count = rf.size() / sizeof(OfflineLog);
-    rf.close();
-  }
-
-  if (count >= MAX_OFFLINE_LOGS) {
-    Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
-    OfflineLog buf[MAX_OFFLINE_LOGS];
-    File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
-    if (r2) { r2.read((uint8_t*)buf, sizeof(buf)); r2.close(); }
-    File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
-    if (w2) {
-      w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
-      w2.write((uint8_t*)&entry, sizeof(OfflineLog));
-      w2.close();
-    }
-    return;
-  }
-
-  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_APPEND);
-  if (!f) { Serial.println("[OFFLINE] ERROR: Could not open offline log file."); return; }
-  f.write((uint8_t*)&entry, sizeof(OfflineLog));
-  f.close();
-  Serial.printf("[OFFLINE] Queued log: student=%d method=%s date=%s time=%s\n",
-                studentID, method.c_str(), dateStr.c_str(), timeStr.c_str());
-}
-
 // ========== Offline Logging ==========
 
 void queueOfflineLog(int studentID, String method) {
