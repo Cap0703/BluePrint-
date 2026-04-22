@@ -353,43 +353,32 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
 
 // ========== SERVER COMMUNICATION ==========
 bool signIn() {
-  const int maxRetries = 3;
-  int retryCount = 0;
-  while (retryCount < maxRetries) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.setTimeout(15000);
-    String url = String(serverEndpoint) + "/api/scanner/auth/login";
-    if (!http.begin(client, url)) {
-      http.end();
-      delay(3000);
-      retryCount++;
-      continue;
-    }
-    http.addHeader("Content-Type", "application/json");
-    StaticJsonDocument<256> doc;
-    doc["SCANNER_ID"] = SCANNER_ID;
-    doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
-    doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
-    String body;
-    serializeJson(doc, body);
-    int code = http.POST(body);
-    if (code == 200) {
-      String response = http.getString();
-      StaticJsonDocument<512> resp;
-      deserializeJson(resp, response);
-      authToken = resp["token"].as<String>();
-      scannerDbId = resp["user"]["id"].as<String>();
-      Serial.println("✓ Scanner authenticated.");
-      http.end();
-      return true;
-    } else {
-      http.end();
-      delay(3000);
-      retryCount++;
-    }
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(10000);
+  String url = String(serverEndpoint) + "/api/scanner/auth/login";
+  if (!http.begin(client, url)) { http.end(); return false; }
+  http.addHeader("Content-Type", "application/json");
+  StaticJsonDocument<256> doc;
+  doc["SCANNER_ID"] = SCANNER_ID;
+  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  if (code == 200) {
+    String response = http.getString();
+    StaticJsonDocument<512> resp;
+    deserializeJson(resp, response);
+    authToken = resp["token"].as<String>();
+    scannerDbId = resp["user"]["id"].as<String>();
+    Serial.println("✓ Scanner authenticated.");
+    http.end();
+    return true;
   }
+  Serial.printf("[AUTH] Sign in failed, HTTP %d\n", code);
+  http.end();
   return false;
 }
 
@@ -785,15 +774,17 @@ void queueOfflineLog(int studentID, String method) {
 
   if (count >= MAX_OFFLINE_LOGS) {
     Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
-    OfflineLog buf[MAX_OFFLINE_LOGS];
+    OfflineLog* buf = (OfflineLog*)malloc(sizeof(OfflineLog) * MAX_OFFLINE_LOGS);
+    if (!buf) { Serial.println("[OFFLINE] malloc failed."); return; }
     File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
-    if (r2) { r2.read((uint8_t*)buf, sizeof(buf)); r2.close(); }
+    if (r2) { r2.read((uint8_t*)buf, sizeof(OfflineLog) * MAX_OFFLINE_LOGS); r2.close(); }
     File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
     if (w2) {
       w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
       w2.write((uint8_t*)&entry, sizeof(OfflineLog));
       w2.close();
     }
+    free(buf);
     return;
   }
 
