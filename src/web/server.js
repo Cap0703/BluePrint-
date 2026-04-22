@@ -477,6 +477,41 @@ function extractLogTimeValue(value) {
   return parts.length > 1 ? parts[parts.length - 1] : normalized;
 }
 
+function normalizeLogDateValue(value) {
+  const normalized = normalizeOptionalValue(value);
+  if (!normalized) return null;
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return normalized;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function normalizeLogTimeValue(value) {
+  const normalized = normalizeOptionalValue(value);
+  if (!normalized) return null;
+  const extracted = extractLogTimeValue(normalized);
+  const converted = convertTo24HourFormat(extracted);
+  const match = String(converted).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return converted;
+  const hours = String(match[1]).padStart(2, '0');
+  const minutes = match[2];
+  const seconds = match[3] || '00';
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function getLogTimestampValue(log) {
+  const dateValue = normalizeLogDateValue(log?.date_scanned);
+  const timeValue = normalizeLogTimeValue(log?.time_scanned);
+  if (!dateValue || !timeValue) return Number.NEGATIVE_INFINITY;
+  const timestamp = Date.parse(`${dateValue}T${timeValue}`);
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
+function compareLogsChronologically(left, right) {
+  const timestampDiff = getLogTimestampValue(right) - getLogTimestampValue(left);
+  if (timestampDiff !== 0) return timestampDiff;
+  return Number(right?.id || 0) - Number(left?.id || 0);
+}
+
 function normalizeOptionalValue(value) {
   if (value === undefined || value === null) return null;
   const normalized = String(value).trim();
@@ -628,13 +663,125 @@ function convertToCsv(logs) {
   const header = ['Date Scanned', 'Time Scanned', 'Student ID', 'Period', 'Status'];
   const rows = logs.map(log => [
     log.date_scanned,
-    convertTo24HourFormat(log.time_scanned),
+    normalizeLogTimeValue(log.time_scanned),
     log.student_id,
     log.period,
     log.status
   ]);
   const csvContent = [header, ...rows].map(e => e.join(",")).join("\n");
   return csvContent;
+}
+
+async function buildPreparedLogEntry(rawLog, options = {}) {
+  const {
+    requireStudentId = true,
+    requireScannerFields = true
+  } = options;
+  let {
+    period,
+    scanner_location,
+    scanner_id,
+    student_id,
+    first_name,
+    last_name,
+    time_scanned,
+    date_scanned,
+    status
+  } = rawLog;
+
+  period = normalizeOptionalValue(period);
+  status = normalizeOptionalValue(status);
+  first_name = normalizeOptionalValue(first_name);
+  last_name = normalizeOptionalValue(last_name);
+  scanner_location = normalizeOptionalValue(scanner_location);
+  scanner_id = normalizeOptionalValue(scanner_id);
+  student_id = normalizeOptionalValue(student_id);
+  date_scanned = normalizeLogDateValue(date_scanned);
+  time_scanned = normalizeLogTimeValue(time_scanned);
+
+  if (requireStudentId && !student_id) {
+    throw new Error('Student ID is required');
+  }
+
+  if (requireScannerFields && (!scanner_location || !scanner_id)) {
+    throw new Error('Scanner location and scanner ID are required');
+  }
+
+  if (student_id && (!first_name || !last_name)) {
+    const studentLookup = await pool.query(
+      'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
+      [student_id]
+    );
+    if (studentLookup.rows.length > 0) {
+      first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
+      last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
+    } else {
+      const priorLogLookup = await pool.query(`
+        SELECT first_name, last_name
+        FROM logs
+        WHERE student_id = $1
+          AND first_name IS NOT NULL
+          AND BTRIM(first_name) <> ''
+          AND last_name IS NOT NULL
+          AND BTRIM(last_name) <> ''
+        ORDER BY id DESC
+        LIMIT 1
+      `, [student_id]);
+      if (priorLogLookup.rows.length > 0) {
+        first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
+        last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
+      }
+    }
+  }
+
+  if (date_scanned && time_scanned) {
+    const fullTimestamp = `${date_scanned} ${time_scanned}`;
+    const periods = await getPeriodsForDate(date_scanned);
+    const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
+    if (computed) {
+      period = period || computed;
+    } else {
+      console.log('Could not compute period for new log, will fill later');
+    }
+  }
+
+  return {
+    period,
+    scanner_location,
+    scanner_id,
+    student_id,
+    first_name,
+    last_name,
+    time_scanned,
+    date_scanned,
+    status
+  };
+}
+
+async function insertPreparedLogEntry(preparedLog) {
+  await pool.query(`
+    INSERT INTO logs (
+      period,
+      scanner_location,
+      scanner_id,
+      student_id,
+      first_name,
+      last_name,
+      time_scanned,
+      date_scanned,
+      status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [
+    preparedLog.period,
+    preparedLog.scanner_location,
+    preparedLog.scanner_id,
+    preparedLog.student_id,
+    preparedLog.first_name,
+    preparedLog.last_name,
+    preparedLog.time_scanned,
+    preparedLog.date_scanned,
+    preparedLog.status
+  ]);
 }
 
 
@@ -1515,9 +1662,8 @@ app.get('/api/logs', verifyToken, async (req, res) => {
     const result = await pool.query(`
       SELECT *
       FROM logs
-      ORDER BY date_scanned DESC, time_scanned DESC
     `);
-    res.json(result.rows);
+    res.json(result.rows.sort(compareLogsChronologically));
   } catch (err) {
     console.error('Error fetching logs:', err);
     res.status(500).json({ error: 'Failed to fetch logs' });
@@ -1529,9 +1675,8 @@ app.get('/api/logs/csv', verifyToken, async (req, res) => {
     const result = await pool.query(`
       SELECT *
       FROM logs
-      ORDER BY date_scanned DESC, time_scanned DESC
     `);
-    const csv = convertToCsv(result.rows);
+    const csv = convertToCsv(result.rows.sort(compareLogsChronologically));
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=logs.csv');
     res.send(csv);
@@ -1542,87 +1687,38 @@ app.get('/api/logs/csv', verifyToken, async (req, res) => {
 });
 
 app.post('/api/logs', verifyToken, async (req, res) => {
-  let {
-    period,
-    scanner_location,
-    scanner_id,
-    student_id,
-    first_name,
-    last_name,
-    time_scanned,
-    date_scanned,
-    status
-  } = req.body;
   try {
-    period = normalizeOptionalValue(period);
-    status = normalizeOptionalValue(status);
-    first_name = normalizeOptionalValue(first_name);
-    last_name = normalizeOptionalValue(last_name);
-    scanner_location = normalizeOptionalValue(scanner_location);
-    scanner_id = normalizeOptionalValue(scanner_id);
-    student_id = normalizeOptionalValue(student_id);
-    date_scanned = normalizeOptionalValue(date_scanned);
-    time_scanned = normalizeOptionalValue(time_scanned);
-
-    if (student_id && (!first_name || !last_name)) {
-      const studentLookup = await pool.query(
-        'SELECT first_name, last_name FROM students WHERE CAST(student_id AS TEXT) = $1 LIMIT 1',
-        [student_id]
-      );
-      if (studentLookup.rows.length > 0) {
-        first_name = first_name || normalizeOptionalValue(studentLookup.rows[0].first_name);
-        last_name = last_name || normalizeOptionalValue(studentLookup.rows[0].last_name);
-      } else {
-        const priorLogLookup = await pool.query(`
-          SELECT first_name, last_name
-          FROM logs
-          WHERE student_id = $1
-            AND first_name IS NOT NULL
-            AND BTRIM(first_name) <> ''
-            AND last_name IS NOT NULL
-            AND BTRIM(last_name) <> ''
-          ORDER BY id DESC
-          LIMIT 1
-        `, [student_id]);
-        if (priorLogLookup.rows.length > 0) {
-          first_name = first_name || normalizeOptionalValue(priorLogLookup.rows[0].first_name);
-          last_name = last_name || normalizeOptionalValue(priorLogLookup.rows[0].last_name);
-        }
-      }
-    }
-
-    if (date_scanned && time_scanned) {
-      const time24h = convertTo24HourFormat(time_scanned);
-      time_scanned = time24h;
-      const fullTimestamp = `${date_scanned} ${time24h}`;
-      const periods = await getPeriodsForDate(date_scanned);
-      const computed = assignPeriodForLog({ id: 'new', time_scanned: fullTimestamp }, periods);
-      if (computed) {
-        period = period || computed;
-        //console.log(`Computed period for new log: ${period}`);
-      } else {
-        console.log('Could not compute period for new log, will fill later');
-      }
-    }
-    await pool.query(`
-      INSERT INTO logs (
-        period,
-        scanner_location,
-        scanner_id,
-        student_id,
-        first_name,
-        last_name,
-        time_scanned,
-        date_scanned,
-        status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `, [period, scanner_location, scanner_id, student_id, first_name, last_name, time_scanned, date_scanned, status]);
+    const preparedLog = await buildPreparedLogEntry(req.body);
+    await insertPreparedLogEntry(preparedLog);
     await assignPeriodsToLogs();
     await assignStatusesToLogs();
     res.status(201).json({ message: 'Log entry created successfully' });
   } catch (err) {
     console.error('Error creating log entry:', err);
     res.status(500).json({ error: 'Failed to create log entry' });
+  }
+});
+
+app.post('/api/logs/bulk', verifyToken, async (req, res) => {
+  const incomingLogs = Array.isArray(req.body?.logs) ? req.body.logs : [];
+  if (!incomingLogs.length) {
+    return res.status(400).json({ error: 'No log rows were provided' });
+  }
+
+  try {
+    for (let index = 0; index < incomingLogs.length; index += 1) {
+      const preparedLog = await buildPreparedLogEntry(incomingLogs[index], {
+        requireStudentId: true,
+        requireScannerFields: false
+      });
+      await insertPreparedLogEntry(preparedLog);
+    }
+    await assignPeriodsToLogs();
+    await assignStatusesToLogs();
+    res.status(201).json({ message: 'CSV logs uploaded successfully', inserted: incomingLogs.length });
+  } catch (err) {
+    console.error('Error uploading CSV logs:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload CSV logs' });
   }
 });
 

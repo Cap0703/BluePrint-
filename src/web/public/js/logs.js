@@ -13,6 +13,7 @@ function bindLogUi() {
   const openBtn = document.getElementById('addLogButton');
   const closeBtn = document.getElementById('closeModal');
   const form = document.getElementById('logForm');
+  const csvUploadInput = document.getElementById('csvUploadInput');
 
   openBtn.addEventListener('click', () => {
     modal.style.display = 'block';
@@ -33,6 +34,8 @@ function bindLogUi() {
   document.getElementById('assignPeriodsBtn').addEventListener('click', assignPeriodsToLogs);
   document.getElementById('assignStatusesBtn').addEventListener('click', assignStatusesToLogs);
   document.getElementById('csv').addEventListener('click', getLogsCsv);
+  document.getElementById('csvUploadBtn').addEventListener('click', () => csvUploadInput.click());
+  csvUploadInput.addEventListener('change', handleCsvUpload);
 }
 
 async function fetchLogs() {
@@ -44,7 +47,7 @@ async function fetchLogs() {
       }
     });
     if (!res.ok) throw new Error('Failed to fetch logs');
-    logState.allLogs = await res.json();
+    logState.allLogs = sortLogsChronologically(await res.json());
     logState.filteredLogs = [...logState.allLogs];
     populateLogPeriods();
     renderLogs();
@@ -73,6 +76,7 @@ function applyLogFilters() {
     const periodMatch = !period || log.period === period;
     return searchMatch && statusMatch && periodMatch;
   });
+  logState.filteredLogs = sortLogsChronologically(logState.filteredLogs);
 
   renderLogs();
   renderLogMetrics();
@@ -283,4 +287,177 @@ function getLogsCsv() {
     console.error('Error downloading CSV:', error);
     alert('Failed to download CSV');
   });
+}
+
+async function handleCsvUpload(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const parsedRows = parseCsv(text);
+    if (!parsedRows.length) {
+      alert('The selected CSV is empty.');
+      return;
+    }
+
+    const logs = parsedRows
+      .map(mapCsvRowToLog)
+      .filter(log => Object.values(log).some(value => value));
+
+    if (!logs.length) {
+      alert('No valid log rows were found in the CSV.');
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch('/api/logs/bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ logs })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'CSV upload failed');
+    }
+
+    alert(`Uploaded ${data.inserted || logs.length} log entries.`);
+    fetchLogs();
+  } catch (error) {
+    console.error('Failed to upload CSV:', error);
+    alert(error.message || 'Failed to upload CSV');
+  } finally {
+    event.target.value = '';
+  }
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+      row.push(current);
+      if (row.some(cell => String(cell).trim() !== '')) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some(cell => String(cell).trim() !== '')) {
+    rows.push(row);
+  }
+
+  const [headerRow, ...dataRows] = rows;
+  if (!headerRow) return [];
+  const headers = headerRow.map(normalizeCsvHeader);
+
+  return dataRows.map(columns => {
+    const mapped = {};
+    headers.forEach((header, idx) => {
+      mapped[header] = String(columns[idx] ?? '').trim();
+    });
+    return mapped;
+  });
+}
+
+function mapCsvRowToLog(row) {
+  return {
+    first_name: pickCsvValue(row, ['first_name', 'firstname', 'first']),
+    last_name: pickCsvValue(row, ['last_name', 'lastname', 'last']),
+    student_id: pickCsvValue(row, ['student_id', 'studentid', 'id']),
+    period: pickCsvValue(row, ['period']),
+    scanner_location: pickCsvValue(row, ['scanner_location', 'location', 'room', 'scanner']),
+    scanner_id: pickCsvValue(row, ['scanner_id', 'scannerid', 'device_id', 'device']),
+    status: pickCsvValue(row, ['status']),
+    time_scanned: pickCsvValue(row, ['time_scanned', 'timescanned', 'time', 'scan_time']),
+    date_scanned: pickCsvValue(row, ['date_scanned', 'datescanned', 'date', 'scan_date'])
+  };
+}
+
+function pickCsvValue(row, keys) {
+  for (const key of keys) {
+    if (row[key]) return row[key];
+  }
+  return '';
+}
+
+function normalizeCsvHeader(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function sortLogsChronologically(logs) {
+  return [...logs].sort(compareLogsChronologically);
+}
+
+function compareLogsChronologically(left, right) {
+  const timestampDiff = getLogTimestampValue(right) - getLogTimestampValue(left);
+  if (timestampDiff !== 0) return timestampDiff;
+  return Number(right?.id || 0) - Number(left?.id || 0);
+}
+
+function getLogTimestampValue(log) {
+  const date = String(log?.date_scanned || '').trim();
+  const time = normalizeLogTime(log?.time_scanned);
+  if (!date || !time) return Number.NEGATIVE_INFINITY;
+  const timestamp = Date.parse(`${date}T${time}`);
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
+function normalizeLogTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const timeOnly = raw.includes(' ') ? raw.split(' ').pop() : raw;
+  const twelveHourMatch = timeOnly.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (twelveHourMatch) {
+    let hours = Number(twelveHourMatch[1]);
+    const minutes = twelveHourMatch[2];
+    const seconds = twelveHourMatch[3] || '00';
+    const meridiem = twelveHourMatch[4].toUpperCase();
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+  }
+
+  const twentyFourHourMatch = timeOnly.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!twentyFourHourMatch) return timeOnly;
+  return `${String(twentyFourHourMatch[1]).padStart(2, '0')}:${twentyFourHourMatch[2]}:${twentyFourHourMatch[3] || '00'}`;
 }
