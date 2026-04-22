@@ -894,50 +894,43 @@ void setup() {
 // ========== LOOP ==========
 void loop() {
     webSocket.loop();
+
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
+
     static unsigned long lastWifiRetry = 0;
-    if (WiFi.status() != WL_CONNECTED) {
+    static bool wifiJustConnected = false;
+
+    if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+        WifiConnected = true;
+        wifiJustConnected = true;
+        Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
         WifiConnected = false;
-        if (millis() - lastWifiRetry > 300000) { // 5 minutes
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
+        if (millis() - lastWifiRetry > 300000) {
             lastWifiRetry = millis();
             Serial.println("[WIFI] Attempting reconnect...");
-            static unsigned long lastWifiRetry = 0;
-            static bool wifiJustConnected = false;
-
-            if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
-                // Transition: was offline, now online
-                WifiConnected = true;
-                wifiJustConnected = true;
-                Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
-                updateLedStatus();
-            } else if (WiFi.status() != WL_CONNECTED) {
-                WifiConnected = false;
-                if (millis() - lastWifiRetry > 300000) {
-                    lastWifiRetry = millis();
-                    Serial.println("[WIFI] Attempting reconnect...");
-                    connectWifi();
-                }
-            }
-
-            // Handle post-connection auth and flush outside of connectWifi
-            // so it doesn't block anything
-            if (wifiJustConnected) {
-              wifiJustConnected = false;
-              if (signIn()) {
-                  flushOfflineLogs();
-              }
-              // Start WebSocket now that WiFi and auth are ready
-              webSocket.beginSSL(wsHost, wsPort, wsPath);
-              webSocket.onEvent(onWebSocketEvent);
-              webSocket.setReconnectInterval(5000);
-          }
+            connectWifi();
         }
     }
+
+    if (wifiJustConnected) {
+        wifiJustConnected = false;
+        if (signIn()) {
+            flushOfflineLogs();
+        }
+        webSocket.beginSSL(wsHost, wsPort, wsPath);
+        webSocket.onEvent(onWebSocketEvent);
+        webSocket.setReconnectInterval(5000);
+    }
+
     updateLedStatus();
-    // Fingerprint scanning in scanner or enroll mode
+
     if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
         int fingerID = scanFingerprint();
         if (fingerID >= 0) {
@@ -945,20 +938,22 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                  sendLog(studentID, "fingerprint");
-                  sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                  delay(1000);
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                    sendLog(studentID, "fingerprint");
+                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+                    delay(1000);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 }
                 delay(3000);
             }
         }
     }
+
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
-      sendHeartbeat();
-      lastHeartbeat = millis();
+        sendHeartbeat();
+        lastHeartbeat = millis();
     }
+
     delay(10);
 }
 
