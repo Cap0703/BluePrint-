@@ -1,7 +1,7 @@
 const CALENDAR_START_HOUR = 6;
 const CALENDAR_END_HOUR = 24;
 const MINUTE_HEIGHT = 1;
-const TOP_OFFSET = 12;
+const TOP_OFFSET = 0;
 
 function minuteToCalendarOffset(totalMinutes) {
     return ((totalMinutes - (CALENDAR_START_HOUR * 60)) * MINUTE_HEIGHT) + TOP_OFFSET;
@@ -23,7 +23,7 @@ function filteredCalendarEvents(events) {
 function updateCalendarLayoutMetrics() {
     const grid = document.querySelector('.calendar-grid');
     if (grid) {
-        grid.style.minHeight = `${minuteToCalendarOffset(CALENDAR_END_HOUR * 60) + TOP_OFFSET}px`;
+        grid.style.minHeight = `${minuteToCalendarOffset(CALENDAR_END_HOUR * 60)}px`;
     }
 }
 

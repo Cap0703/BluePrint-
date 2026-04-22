@@ -1963,7 +1963,6 @@ tr:hover {
     flex-shrink: 0;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
     position: relative;
-    padding-top: 12px;
     background: rgba(255, 255, 255, 0.03);
 }
 
@@ -1975,8 +1974,9 @@ tr:hover {
 
 .time-label {
     position: absolute;
-    top: -11px;
+    top: 0;
     right: 10px;
+    transform: translateY(-50%);
     color: rgba(235, 244, 255, 0.78);
     font-size: 0.78rem;
     font-weight: 600;
@@ -1989,14 +1989,13 @@ tr:hover {
 .events-column {
     flex: 1;
     position: relative;
-    padding-top: 12px;
     overflow: visible;
 }
 
 .calendar-grid::before {
     content: '';
     position: absolute;
-    top: 12px;
+    top: 0;
     left: 88px;
     right: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
