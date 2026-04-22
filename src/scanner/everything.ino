@@ -891,7 +891,7 @@ void setup() {
   Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
-// ========== LOOP ==========
+// ========== LOOP ========== 
 void loop() {
     webSocket.loop();
 
