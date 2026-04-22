@@ -752,29 +752,12 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // ========== WIFI ==========
 void connectWifi() {
-  Serial.printf("Connecting to %s", ssid);
+  Serial.printf("[WIFI] Starting connection attempt to %s\n", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-    updateLedStatus();
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected.");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    WifiConnected = true;
-    if (authToken != "") flushOfflineLogs();
-    updateLedStatus();
-    delay(2000);
-  } else {
-    Serial.println("\nWiFi connection FAILED!");
-    WifiConnected = false;
-    updateLedStatus();
-  }
+  WifiConnected = false;
+  // No waiting — just fires off the connection and returns immediately.
+  // WiFi.status() will become WL_CONNECTED on its own in the background.
 }
 
 // ========== Offline Logging ==========
@@ -906,10 +889,6 @@ void setup() {
 
   Serial.println("[INIT] Connecting to WiFi...");
   connectWifi();
-  while (!WifiConnected) {
-    delay(2000);
-    connectWifi();
-  }
 
   Serial.println("[INIT] Syncing time with NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -946,10 +925,39 @@ void loop() {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
+    static unsigned long lastWifiRetry = 0;
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi lost – reconnecting...");
         WifiConnected = false;
-        connectWifi();
+        if (millis() - lastWifiRetry > 300000) { // 5 minutes
+            lastWifiRetry = millis();
+            Serial.println("[WIFI] Attempting reconnect...");
+            static unsigned long lastWifiRetry = 0;
+            static bool wifiJustConnected = false;
+
+            if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+                // Transition: was offline, now online
+                WifiConnected = true;
+                wifiJustConnected = true;
+                Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+                updateLedStatus();
+            } else if (WiFi.status() != WL_CONNECTED) {
+                WifiConnected = false;
+                if (millis() - lastWifiRetry > 300000) {
+                    lastWifiRetry = millis();
+                    Serial.println("[WIFI] Attempting reconnect...");
+                    connectWifi();
+                }
+            }
+
+            // Handle post-connection auth and flush outside of connectWifi
+            // so it doesn't block anything
+            if (wifiJustConnected) {
+                wifiJustConnected = false;
+                if (signIn()) {
+                    flushOfflineLogs();
+                }
+            }
+        }
     }
     updateLedStatus();
     // Fingerprint scanning in scanner or enroll mode
