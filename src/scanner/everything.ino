@@ -396,6 +396,7 @@ bool signIn() {
 void getDateTime(String &dateStr, String &timeStr) {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
+    Serial.println("[TIME] NTP not synced yet -- using fallback timestamp.");
     dateStr = "0000-00-00";
     timeStr = "00:00:00";
     return;
@@ -890,15 +891,11 @@ void setup() {
   Serial.println("[INIT] Connecting to WiFi...");
   connectWifi();
 
-  Serial.println("[INIT] Syncing time with NTP...");
+  Serial.println("[INIT] Syncing time with NTP (non-blocking)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  // Wait for NTP to actually sync before flushing so timestamps are correct
-  struct tm timeinfo;
-  int ntpRetries = 0;
-  while (!getLocalTime(&timeinfo) && ntpRetries < 20) {
-    delay(500);
-    ntpRetries++;
-  }
+  // Don't wait -- NTP will sync in the background.
+  // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
+  // so offline logs queued before sync will just have fallback timestamps.
 
   Serial.println("[INIT] Authenticating with server...");
   if (!signIn()) {
