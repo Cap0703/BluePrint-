@@ -28,8 +28,8 @@ const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 16 * 3600;
-const int daylightOffset_sec = 3600;
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 0;
 
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
@@ -392,6 +392,7 @@ void getDateTime(String &dateStr, String &timeStr) {
   strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeinfo);
   dateStr = String(dateBuffer);
   timeStr = String(timeBuffer);
+  Serial.println(dateStr);
 }
 
 void sendLog(int studentID, String method = "fingerprint") {
@@ -767,6 +768,8 @@ void setup() {
 
   Serial.println("[INIT] Syncing time with NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  setenv("TZ", "PST8PDT", 1);
+  tzset();
 
   Serial.println("[INIT] Authenticating with server...");
   if (!signIn()) {
