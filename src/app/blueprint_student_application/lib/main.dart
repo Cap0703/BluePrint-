@@ -263,20 +263,21 @@ class ContinueButton extends StatelessWidget {
         return "";
     }
   }
-    catch(e) {
+    catch(e, stack) {
       print("Error $e");
+      print(stack);
       return "";
     }
   }
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: () {
+      onPressed: () async {
         if (formKey.currentState!.validate()){
           String studentID = sIDController.text;
           String password = passwordController.text;
           String uuID = uuid.v4();
-          authenticateUser(context);
+          await authenticateUser(context);
           print("Student ID: $studentID");
           print("Password: $password");
           print("UUID:  $uuID");
