@@ -353,49 +353,39 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
 
 // ========== SERVER COMMUNICATION ==========
 bool signIn() {
-  const int maxRetries = 3;
-  int retryCount = 0;
-  while (retryCount < maxRetries) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.setTimeout(15000);
-    String url = String(serverEndpoint) + "/api/scanner/auth/login";
-    if (!http.begin(client, url)) {
-      http.end();
-      delay(3000);
-      retryCount++;
-      continue;
-    }
-    http.addHeader("Content-Type", "application/json");
-    StaticJsonDocument<256> doc;
-    doc["SCANNER_ID"] = SCANNER_ID;
-    doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
-    doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
-    String body;
-    serializeJson(doc, body);
-    int code = http.POST(body);
-    if (code == 200) {
-      String response = http.getString();
-      StaticJsonDocument<512> resp;
-      deserializeJson(resp, response);
-      authToken = resp["token"].as<String>();
-      scannerDbId = resp["user"]["id"].as<String>();
-      Serial.println("✓ Scanner authenticated.");
-      http.end();
-      return true;
-    } else {
-      http.end();
-      delay(3000);
-      retryCount++;
-    }
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(10000);
+  String url = String(serverEndpoint) + "/api/scanner/auth/login";
+  if (!http.begin(client, url)) { http.end(); return false; }
+  http.addHeader("Content-Type", "application/json");
+  StaticJsonDocument<256> doc;
+  doc["SCANNER_ID"] = SCANNER_ID;
+  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  if (code == 200) {
+    String response = http.getString();
+    StaticJsonDocument<512> resp;
+    deserializeJson(resp, response);
+    authToken = resp["token"].as<String>();
+    scannerDbId = resp["user"]["id"].as<String>();
+    Serial.println("✓ Scanner authenticated.");
+    http.end();
+    return true;
   }
+  Serial.printf("[AUTH] Sign in failed, HTTP %d\n", code);
+  http.end();
   return false;
 }
 
 void getDateTime(String &dateStr, String &timeStr) {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
+    Serial.println("[TIME] NTP not synced yet -- using fallback timestamp.");
     dateStr = "0000-00-00";
     timeStr = "00:00:00";
     return;
@@ -752,29 +742,12 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // ========== WIFI ==========
 void connectWifi() {
-  Serial.printf("Connecting to %s", ssid);
+  Serial.printf("[WIFI] Starting connection attempt to %s\n", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-    updateLedStatus();
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected.");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    WifiConnected = true;
-    if (authToken != "") flushOfflineLogs();
-    updateLedStatus();
-    delay(2000);
-  } else {
-    Serial.println("\nWiFi connection FAILED!");
-    WifiConnected = false;
-    updateLedStatus();
-  }
+  WifiConnected = false;
+  // No waiting — just fires off the connection and returns immediately.
+  // WiFi.status() will become WL_CONNECTED on its own in the background.
 }
 
 // ========== Offline Logging ==========
@@ -801,15 +774,17 @@ void queueOfflineLog(int studentID, String method) {
 
   if (count >= MAX_OFFLINE_LOGS) {
     Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
-    OfflineLog buf[MAX_OFFLINE_LOGS];
+    OfflineLog* buf = (OfflineLog*)malloc(sizeof(OfflineLog) * MAX_OFFLINE_LOGS);
+    if (!buf) { Serial.println("[OFFLINE] malloc failed."); return; }
     File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
-    if (r2) { r2.read((uint8_t*)buf, sizeof(buf)); r2.close(); }
+    if (r2) { r2.read((uint8_t*)buf, sizeof(OfflineLog) * MAX_OFFLINE_LOGS); r2.close(); }
     File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
     if (w2) {
       w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
       w2.write((uint8_t*)&entry, sizeof(OfflineLog));
       w2.close();
     }
+    free(buf);
     return;
   }
 
@@ -906,53 +881,56 @@ void setup() {
 
   Serial.println("[INIT] Connecting to WiFi...");
   connectWifi();
-  while (!WifiConnected) {
-    delay(2000);
-    connectWifi();
-  }
 
-  Serial.println("[INIT] Syncing time with NTP...");
+  Serial.println("[INIT] Syncing time with NTP (non-blocking)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  // Wait for NTP to actually sync before flushing so timestamps are correct
-  struct tm timeinfo;
-  int ntpRetries = 0;
-  while (!getLocalTime(&timeinfo) && ntpRetries < 20) {
-    delay(500);
-    ntpRetries++;
-  }
+  // Don't wait -- NTP will sync in the background.
+  // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
+  // so offline logs queued before sync will just have fallback timestamps.
 
-  Serial.println("[INIT] Authenticating with server...");
-  if (!signIn()) {
-    Serial.println("[ERROR] Fatal: cannot authenticate with server.");
-    while (1) delay(1000);
-  }
-  flushOfflineLogs();
-
-  Serial.println("[INIT] Connecting to WebSocket...");
-  webSocket.beginSSL(wsHost, wsPort, wsPath);
-  delay(500);
-  for (int i = 0; i < 5; i++) {
-      webSocket.loop();
-      delay(10);
-  }
-  webSocket.onEvent(onWebSocketEvent);
-  webSocket.setReconnectInterval(5000);
+  Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
-// ========== LOOP ==========
+// ========== LOOP ========== 
 void loop() {
     webSocket.loop();
+
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi lost – reconnecting...");
+
+    static unsigned long lastWifiRetry = 0;
+    static bool wifiJustConnected = false;
+
+    if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+        WifiConnected = true;
+        wifiJustConnected = true;
+        Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
         WifiConnected = false;
-        connectWifi();
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
+        if (millis() - lastWifiRetry > 300000) {
+            lastWifiRetry = millis();
+            Serial.println("[WIFI] Attempting reconnect...");
+            connectWifi();
+        }
     }
+
+    if (wifiJustConnected) {
+        wifiJustConnected = false;
+        if (signIn()) {
+            flushOfflineLogs();
+        }
+        webSocket.beginSSL(wsHost, wsPort, wsPath);
+        webSocket.onEvent(onWebSocketEvent);
+        webSocket.setReconnectInterval(5000);
+    }
+
     updateLedStatus();
-    // Fingerprint scanning in scanner or enroll mode
+
     if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
         int fingerID = scanFingerprint();
         if (fingerID >= 0) {
@@ -960,20 +938,22 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                  sendLog(studentID, "fingerprint");
-                  sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                  delay(1000);
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                    sendLog(studentID, "fingerprint");
+                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+                    delay(1000);
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 }
                 delay(3000);
             }
         }
     }
+
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
-      sendHeartbeat();
-      lastHeartbeat = millis();
+        sendHeartbeat();
+        lastHeartbeat = millis();
     }
+
     delay(10);
 }
 
