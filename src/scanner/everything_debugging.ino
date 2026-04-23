@@ -30,6 +30,10 @@ const char* wsPath = "/ws";
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 0;
 const int daylightOffset_sec = 0;
+#define BOARD_LED 2
+
+unsigned long ledConfirmStart = 0;
+bool ledConfirmActive = false;
 
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
@@ -42,6 +46,18 @@ Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 #define PN532_RESET -1
 
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
+
+// ========== SD HARDWARE ==========
+
+#define OFFLINE_LOGS_FILE "/offline_logs.bin"
+#define MAX_OFFLINE_LOGS 200
+
+struct OfflineLog {
+  int studentID;
+  char method[16];
+  char date[11];
+  char time[9];
+};
 
 // ========== GLOBALS ==========
 String authToken = "";
@@ -83,6 +99,8 @@ int scanFingerprint();
 int findStudent(int fingerprintID);
 void handleNFCCard();
 String readNFCASCII();
+void queueOfflineLog(int studentID, String method);
+void flushOfflineLogs();
 
 // ========== FINGERPRINT ==========
 void initializeFingerprint() {
@@ -339,49 +357,39 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
 
 // ========== SERVER COMMUNICATION ==========
 bool signIn() {
-  const int maxRetries = 3;
-  int retryCount = 0;
-  while (retryCount < maxRetries) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.setTimeout(15000);
-    String url = String(serverEndpoint) + "/api/scanner/auth/login";
-    if (!http.begin(client, url)) {
-      http.end();
-      delay(3000);
-      retryCount++;
-      continue;
-    }
-    http.addHeader("Content-Type", "application/json");
-    StaticJsonDocument<256> doc;
-    doc["SCANNER_ID"] = SCANNER_ID;
-    doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
-    doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
-    String body;
-    serializeJson(doc, body);
-    int code = http.POST(body);
-    if (code == 200) {
-      String response = http.getString();
-      StaticJsonDocument<512> resp;
-      deserializeJson(resp, response);
-      authToken = resp["token"].as<String>();
-      scannerDbId = resp["user"]["id"].as<String>();
-      Serial.println("✓ Scanner authenticated.");
-      http.end();
-      return true;
-    } else {
-      http.end();
-      delay(3000);
-      retryCount++;
-    }
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(10000);
+  String url = String(serverEndpoint) + "/api/scanner/auth/login";
+  if (!http.begin(client, url)) { http.end(); return false; }
+  http.addHeader("Content-Type", "application/json");
+  StaticJsonDocument<256> doc;
+  doc["SCANNER_ID"] = SCANNER_ID;
+  doc["SCANNER_LOCATION"] = SCANNER_LOCATION;
+  doc["SCANNER_PASSWORD"] = SCANNER_PASSWORD;
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  if (code == 200) {
+    String response = http.getString();
+    StaticJsonDocument<512> resp;
+    deserializeJson(resp, response);
+    authToken = resp["token"].as<String>();
+    scannerDbId = resp["user"]["id"].as<String>();
+    Serial.println("✓ Scanner authenticated.");
+    http.end();
+    return true;
   }
+  Serial.printf("[AUTH] Sign in failed, HTTP %d\n", code);
+  http.end();
   return false;
 }
 
 void getDateTime(String &dateStr, String &timeStr) {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
+    Serial.println("[TIME] NTP not synced yet -- using fallback timestamp.");
     dateStr = "0000-00-00";
     timeStr = "00:00:00";
     return;
@@ -392,36 +400,58 @@ void getDateTime(String &dateStr, String &timeStr) {
   strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeinfo);
   dateStr = String(dateBuffer);
   timeStr = String(timeBuffer);
-  Serial.println(dateStr);
 }
 
-void sendLog(int studentID, String method = "fingerprint") {
-  if (authToken == "") return;
+void sendLog(int studentID, String method) {
+  if (WiFi.status() != WL_CONNECTED || authToken == "") {
+    Serial.println("[LOG] Offline -- queuing log locally.");
+    queueOfflineLog(studentID, method);
+    // Flash purple twice to show the scan was queued offline
+    for (int i = 0; i < 2; i++) {
+      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_PURPLE);
+      delay(200);
+      finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, 0);
+      delay(150);
+    }
+    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_RED);
+    lastLedColor = FINGERPRINT_LED_RED;
+    return;
+  }
+
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(10000);
+
   if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+    Serial.println("[LOG] http.begin failed -- queuing offline.");
+    queueOfflineLog(studentID, method);
     http.end();
     return;
   }
+
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
+
   String dateStr, timeStr;
   getDateTime(dateStr, timeStr);
+
   StaticJsonDocument<256> doc;
   doc["scanner_location"] = SCANNER_LOCATION;
-  doc["scanner_id"] = SCANNER_ID;
-  doc["student_id"] = studentID;
-  doc["date_scanned"] = dateStr;
-  doc["time_scanned"] = timeStr;
-  doc["status"] = "present";
-  doc["method"] = method;  // fingerprint, NFC, etc.
+  doc["scanner_id"]       = SCANNER_ID;
+  doc["student_id"]       = studentID;
+  doc["date_scanned"]     = dateStr;
+  doc["time_scanned"]     = timeStr;
+  doc["status"]           = "Unknown";
+  doc["method"]           = method;
+
   String body;
   serializeJson(doc, body);
+
   int code = http.POST(body);
-  if (code == 201) {
-  } else {
+  if (code != 201) {
+    Serial.printf("[LOG] Server returned %d -- queuing offline.\n", code);
+    queueOfflineLog(studentID, method);
   }
   http.end();
 }
@@ -716,34 +746,136 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // ========== WIFI ==========
 void connectWifi() {
-  Serial.printf("Connecting to %s", ssid);
+  Serial.printf("[WIFI] Starting connection attempt to %s\n", ssid);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-    updateLedStatus();
+  WifiConnected = false;
+  // No waiting — just fires off the connection and returns immediately.
+  // WiFi.status() will become WL_CONNECTED on its own in the background.
+}
+
+// ========== Offline Logging ==========
+
+void queueOfflineLog(int studentID, String method) {
+  String dateStr, timeStr;
+  getDateTime(dateStr, timeStr);
+
+  OfflineLog entry;
+  entry.studentID = studentID;
+  strncpy(entry.method, method.c_str(), sizeof(entry.method) - 1);
+  entry.method[sizeof(entry.method) - 1] = '\0';
+  strncpy(entry.date, dateStr.c_str(), sizeof(entry.date) - 1);
+  entry.date[sizeof(entry.date) - 1] = '\0';
+  strncpy(entry.time, timeStr.c_str(), sizeof(entry.time) - 1);
+  entry.time[sizeof(entry.time) - 1] = '\0';
+
+  int count = 0;
+  File rf = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (rf) {
+    count = rf.size() / sizeof(OfflineLog);
+    rf.close();
   }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected.");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    WifiConnected = true;
-    updateLedStatus();
-    delay(2000);
+
+  if (count >= MAX_OFFLINE_LOGS) {
+    Serial.println("[OFFLINE] Queue full -- dropping oldest log.");
+    OfflineLog* buf = (OfflineLog*)malloc(sizeof(OfflineLog) * MAX_OFFLINE_LOGS);
+    if (!buf) { Serial.println("[OFFLINE] malloc failed."); return; }
+    File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+    if (r2) { r2.read((uint8_t*)buf, sizeof(OfflineLog) * MAX_OFFLINE_LOGS); r2.close(); }
+    File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
+    if (w2) {
+      w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
+      w2.write((uint8_t*)&entry, sizeof(OfflineLog));
+      w2.close();
+    }
+    free(buf);
+    return;
+  }
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_APPEND);
+  if (!f) { Serial.println("[OFFLINE] ERROR: Could not open offline log file."); return; }
+  f.write((uint8_t*)&entry, sizeof(OfflineLog));
+  f.close();
+  Serial.printf("[OFFLINE] Queued log: student=%d method=%s date=%s time=%s\n",
+                studentID, method.c_str(), dateStr.c_str(), timeStr.c_str());
+}
+
+void flushOfflineLogs() {
+  if (!LittleFS.exists(OFFLINE_LOGS_FILE)) return;
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (!f) return;
+
+  int count = f.size() / sizeof(OfflineLog);
+  if (count == 0) { f.close(); return; }
+
+  Serial.printf("[OFFLINE] Flushing %d queued log(s) to server...\n", count);
+  sendOutput("Flushing " + String(count) + " offline log(s)...", -1);
+
+  int sent = 0, failed = 0;
+
+  for (int i = 0; i < count; i++) {
+    OfflineLog entry;
+    f.read((uint8_t*)&entry, sizeof(OfflineLog));
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(10000);
+
+    if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
+      failed++; http.end(); continue;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + authToken);
+
+    StaticJsonDocument<256> doc;
+    doc["scanner_location"] = SCANNER_LOCATION;
+    doc["scanner_id"]       = SCANNER_ID;
+    doc["student_id"]       = entry.studentID;
+    doc["date_scanned"]     = entry.date;
+    doc["time_scanned"]     = entry.time;
+    doc["status"]           = "Unknown";
+    doc["method"]           = entry.method;
+
+    String body;
+    serializeJson(doc, body);
+
+    int code = http.POST(body);
+    if (code == 201) { sent++; }
+    else {
+      Serial.printf("[OFFLINE] Failed for student %d (HTTP %d)\n", entry.studentID, code);
+      failed++;
+    }
+    http.end();
+    webSocket.loop();
+  }
+
+  f.close();
+
+  if (failed == 0) {
+    LittleFS.remove(OFFLINE_LOGS_FILE);
+    Serial.println("[OFFLINE] All queued logs sent. File cleared.");
+    sendOutput("All offline logs flushed successfully.", -1);
   } else {
-    Serial.println("\nWiFi connection FAILED!");
-    WifiConnected = false;
-    updateLedStatus();
+    Serial.printf("[OFFLINE] %d sent, %d failed -- will retry on next reconnect.\n", sent, failed);
+    sendOutput(String(sent) + " sent, " + String(failed) + " failed -- will retry.", -1);
   }
+}
+
+void flashBoardLED(unsigned long durationMs) {
+  digitalWrite(BOARD_LED, HIGH);
+  delay(durationMs);
+  digitalWrite(BOARD_LED, LOW);
 }
 
 // ========== SETUP ==========
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  pinMode(BOARD_LED, OUTPUT);
+  digitalWrite(BOARD_LED, LOW);
 
   Serial.println("\n========== BLUEPRINT SCANNER STARTUP ==========");
   
@@ -761,47 +893,58 @@ void setup() {
 
   Serial.println("[INIT] Connecting to WiFi...");
   connectWifi();
-  while (!WifiConnected) {
-    delay(2000);
-    connectWifi();
-  }
 
-  Serial.println("[INIT] Syncing time with NTP...");
+  Serial.println("[INIT] Syncing time with NTP (non-blocking)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   setenv("TZ", "PST8PDT", 1);
   tzset();
+  // Don't wait -- NTP will sync in the background.
+  // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
+  // so offline logs queued before sync will just have fallback timestamps.
 
-  Serial.println("[INIT] Authenticating with server...");
-  if (!signIn()) {
-    Serial.println("[ERROR] Fatal: cannot authenticate with server.");
-    while (1) delay(1000);
-  }
-
-  Serial.println("[INIT] Connecting to WebSocket...");
-  webSocket.beginSSL(wsHost, wsPort, wsPath);
-  delay(500);
-  for (int i = 0; i < 5; i++) {
-      webSocket.loop();
-      delay(10);
-  }
-  webSocket.onEvent(onWebSocketEvent);
-  webSocket.setReconnectInterval(5000);
+  Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
 // ========== LOOP ==========
 void loop() {
     webSocket.loop();
+
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
         handleNFCCardNonBlocking();
     }
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi lost – reconnecting...");
+
+    static unsigned long lastWifiRetry = 0;
+    static bool wifiJustConnected = false;
+
+    if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+        WifiConnected = true;
+        wifiJustConnected = true;
+        Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
         WifiConnected = false;
-        connectWifi();
+        updateLedStatus();
+    } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
+        if (millis() - lastWifiRetry > 300000) {
+            lastWifiRetry = millis();
+            Serial.println("[WIFI] Attempting reconnect...");
+            connectWifi();
+        }
     }
+
+    if (wifiJustConnected) {
+        wifiJustConnected = false;
+        if (signIn()) {
+            flushOfflineLogs();
+        }
+        webSocket.beginSSL(wsHost, wsPort, wsPath);
+        webSocket.onEvent(onWebSocketEvent);
+        webSocket.setReconnectInterval(5000);
+    }
+
     updateLedStatus();
-    // Fingerprint scanning in scanner or enroll mode
+
     if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
         int fingerID = scanFingerprint();
         if (fingerID >= 0) {
@@ -818,11 +961,13 @@ void loop() {
             }
         }
     }
+
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
         sendHeartbeat();
         lastHeartbeat = millis();
     }
+
     delay(10);
 }
 
@@ -838,20 +983,23 @@ void handleNFCCardNonBlocking() {
                 nfcText.trim();
                 bool isNumeric = true;
                 for (unsigned int i = 0; i < nfcText.length(); i++) {
-                    if (!isdigit(nfcText[i])) { isNumeric = false; break; }
+                  if (!isdigit(nfcText[i])) { isNumeric = false; break; }
                 }
                 if (isNumeric && nfcText.length() > 0) {
-                    int studentID = nfcText.toInt();
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                    sendLog(studentID, "NFC");
-                    sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  int studentID = nfcText.toInt();
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+                  if(!fingerprintInitialized) {
+                    flashBoardLED(1000);
+                  }
+                  sendLog(studentID, "NFC");
+                  sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+                  delay(1000);
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                 } else {
-                    sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
+                  sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
             } else {
-                sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+              sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
             }
         }
         // Optional: add a short delay to avoid reading the same card repeatedly
