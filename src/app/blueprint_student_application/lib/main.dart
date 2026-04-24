@@ -115,6 +115,9 @@ class HomeScreen extends StatelessWidget {
               children: [
                 nfcScannerButtonEnable(studentID: studentID, token: token),
                 nfcScannerButtonDisable(),
+                const loginInstructionText(),
+                const loginInstructionImage(),
+
               ],
             ),
           )
@@ -131,7 +134,7 @@ class FingerprintIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      "assets/BluePrint_Logo.png",
+      "assets/blueprint_logo.png",
       width: 100,
       height: 100,
     );
@@ -428,7 +431,36 @@ class nfcScannerButtonDisable extends StatelessWidget {
     );
 }
 
+}
 
+class loginInstructionText extends StatelessWidget {
+  const loginInstructionText({super.key});
 
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      "Tutorial for Use",
+      style: TextStyle(
+        fontSize: 24,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
+      textAlign: TextAlign.center,
+     );
+  }
 
+}
+
+class loginInstructionImage extends StatelessWidget {
+  const loginInstructionImage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      "assets/scanner_tutorial.png",
+      width: 300,
+      height: 300,
+    );
+
+  }
 }
