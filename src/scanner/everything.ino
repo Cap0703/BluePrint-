@@ -13,8 +13,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54";
-const char password[] = "silentbird445";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
