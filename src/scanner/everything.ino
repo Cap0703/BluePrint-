@@ -64,6 +64,14 @@ bool fingerprintInitialized = false;
 bool nfcInitialized = false;
 uint8_t lastLedColor = FINGERPRINT_LED_RED;
 
+//log pending
+struct PendingLog {
+  int studentID;
+  char method[16];
+  bool pending;
+};
+PendingLog pendingLog = {0, "", false};
+
 // Virtual fingerprint mapping: slot -> student ID
 #define MAX_FINGERPRINT_SLOTS 127
 #define STUDENTS_BIN "/students.bin"
@@ -938,15 +946,22 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
-                  //huge ~6 delay between the two lines below
-                    sendLog(studentID, "fingerprint");
+                    // Queue the log, don't block here
+                    pendingLog.studentID = studentID;
+                    strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
+                    pendingLog.pending = true;
+                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                    
                 }
                 delay(3000);
             }
         }
+    }
+
+    // Process pending log separately so it doesn't block scanning
+    if (pendingLog.pending) {
+        pendingLog.pending = false;
+        sendLog(pendingLog.studentID, String(pendingLog.method));
     }
 
     static unsigned long lastHeartbeat = 0;
