@@ -938,10 +938,11 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  //huge ~6 delay between the two lines below
                     sendLog(studentID, "fingerprint");
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                    
                 }
                 delay(3000);
             }
