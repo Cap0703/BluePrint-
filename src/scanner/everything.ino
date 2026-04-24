@@ -957,6 +957,42 @@ void loop() {
     delay(10);
 }
 
+bool writeNFCText(String text) {
+    // Build NDEF text record
+    uint8_t textLen = text.length();
+    uint8_t payloadLen = 3 + textLen; // status byte + "en" lang + text
+    uint8_t msgLen = 3 + payloadLen;  // record header + payload
+
+    // Full NDEF message buffer (pages 4-7 = 16 bytes)
+    uint8_t buf[16] = {0};
+    int i = 0;
+    buf[i++] = 0x03;        // NDEF TLV type
+    buf[i++] = msgLen;      // message length
+    buf[i++] = 0xD1;        // MB ME SR=1, TNF=0x01 (Well Known)
+    buf[i++] = 0x01;        // type length = 1
+    buf[i++] = payloadLen;  // payload length
+    buf[i++] = 'T';         // type = Text
+    buf[i++] = 0x02;        // status: UTF-8, lang length = 2
+    buf[i++] = 'e';         // lang: "en"
+    buf[i++] = 'n';
+    for (int j = 0; j < textLen && i < 15; j++) {
+        buf[i++] = text[j];
+    }
+    buf[i] = 0xFE;          // TLV terminator
+
+    // Write 4 bytes per page starting at page 4
+    for (int page = 4; page <= 7; page++) {
+        uint8_t pageData[4];
+        memcpy(pageData, &buf[(page - 4) * 4], 4);
+        if (!nfc.ntag2xx_WritePage(page, pageData)) {
+            Serial.println("[NFC] Write failed on page " + String(page));
+            return false;
+        }
+    }
+    Serial.println("[NFC] Wrote \"" + text + "\" to tag.");
+    return true;
+}
+
 void handleNFCCardNonBlocking() {
     uint8_t uid[7];
     uint8_t uidLength;
@@ -974,10 +1010,12 @@ void handleNFCCardNonBlocking() {
                 if (isNumeric && nfcText.length() > 0) {
                   int studentID = nfcText.toInt();
                   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+                  delay(500);
+                  writeNFCText("Successfully emptied NFC Payload!");
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                   sendLog(studentID, "NFC");
                   sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-                  delay(1000);
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  
                 } else {
                   sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
