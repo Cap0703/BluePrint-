@@ -15,7 +15,6 @@
 // ========== CONFIGURATION ==========
 const char ssid[] = "BraveWeb";
 const char password[] = "Br@veW3b";
-
 WebSocketsClient webSocket;
 
 const char* SCANNER_ID = "1";
