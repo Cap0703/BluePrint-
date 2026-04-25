@@ -528,8 +528,9 @@ function formatBattery(value) {
   if (value === null || value === undefined || value === '') return 'N/A';
   // If value > 10, treat as percentage? Or just show volts.
   // For voltage: show "3.7 V"
+  const Value = value + 'V';
   value = voltageToPercent(Number(value)) + '%';
-  return `${value} V`;
+  return `${value} | ${Value}`;
 }
 
 function voltageToPercent(voltage) {
