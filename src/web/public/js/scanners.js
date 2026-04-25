@@ -504,11 +504,6 @@ function statusClass(status) {
   return 'unknown';
 }
 
-function formatBattery(value) {
-  if (value === null || value === undefined || value === '') return 'N/A';
-  return String(value).includes('%') ? String(value) : `${value}%`;
-}
-
 function formatDateTime(value) {
   if (!value) return 'Never';
   const date = new Date(value);
@@ -527,6 +522,21 @@ function formatRelativeTime(value) {
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   const diffHours = Math.round(diffMinutes / 60);
   return `${diffHours}h ago`;
+}
+
+function formatBattery(value) {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  // If value > 10, treat as percentage? Or just show volts.
+  // For voltage: show "3.7 V"
+  value = voltageToPercent(Number(value)) + '%';
+  return `${value} V`;
+}
+
+function voltageToPercent(voltage) {
+  const min = 3.0, max = 4.2;
+  let percent = (voltage - min) / (max - min) * 100;
+  percent = Math.min(100, Math.max(0, percent));
+  return Math.round(percent);
 }
 
 function metricCardMarkup(metric) {

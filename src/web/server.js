@@ -1596,20 +1596,6 @@ app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
   }
 });
 
-function formatBattery(value) {
-  if (value === null || value === undefined || value === '') return 'N/A';
-  // If value > 10, treat as percentage? Or just show volts.
-  // For voltage: show "3.7 V"
-  return `${value} V`;
-}
-
-function voltageToPercent(voltage) {
-  const min = 3.0, max = 4.2;
-  let percent = (voltage - min) / (max - min) * 100;
-  percent = Math.min(100, Math.max(0, percent));
-  return Math.round(percent);
-}
-
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
   const { output, mode, commandId } = req.body;
