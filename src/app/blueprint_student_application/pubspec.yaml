@@ -66,6 +66,7 @@ flutter:
     - assets/blueprint_logo.png
     - assets/blueprint_logo_72x72.png
     - assets/scanner_tutorial.png
+    - assets/boo_background.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

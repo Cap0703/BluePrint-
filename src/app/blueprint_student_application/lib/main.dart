@@ -44,9 +44,17 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.indigo,
 
-      body: SingleChildScrollView(
+      body: SizedBox.expand (
+        child:Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage("assets/boo_background.png"),
+            fit: BoxFit.cover,
+          ),
+        ),
+      
+      child: SingleChildScrollView(
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -81,7 +89,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     )
-      );
+    )
+  )
+  );
   }
 }
 
@@ -93,9 +103,15 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.indigo,
-
-      body: SingleChildScrollView(
+      body: SizedBox.expand (
+        child:Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage("assets/boo_background.png"),
+            fit: BoxFit.cover,
+          ),
+        ),
+      child: SingleChildScrollView(
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -126,7 +142,9 @@ class HomeScreen extends StatelessWidget {
         ),
       )
       )
-    );
+    )
+    )
+  );
   }
 }
 ///FingerprintLogoWidget
