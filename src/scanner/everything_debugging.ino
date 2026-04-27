@@ -41,8 +41,6 @@ int count = 0;
 float calibrationFactor = 4.138 / 5.605;
 const float VREF = 3.278;
 
-#define BOARD_LED 2
-
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
 #define TX_GPIO 17
@@ -118,12 +116,6 @@ String readNFCASCII();
 void queueOfflineLog(int studentID, String method);
 void flushOfflineLogs();
 
-
-void flashBoardLED(unsigned long durationMs) {
-  digitalWrite(BOARD_LED, HIGH);
-  delay(durationMs);
-  digitalWrite(BOARD_LED, LOW);
-}
 // ========== FINGERPRINT ==========
 void initializeFingerprint() {
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
@@ -157,21 +149,16 @@ void initializeNFC() {
   
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
-    //Serial.println("✗ Did not find PN532 NFC board");
+    Serial.println("✗ Did not find PN532 NFC board");
     nfcInitialized = false;
     return;
   }
-  if(count == 1) {
-    Serial.print("✓ Found PN5");
-    nfc.SAMConfig();
-    nfcInitialized = true;
-    Serial.println("✓ NFC scanner initialized.");
-    count = 2;
-  }
-  else {
-    nfc.SAMConfig();
-    nfcInitialized = true;
-  }
+  
+  Serial.print("✓ Found PN5");
+  
+  nfc.SAMConfig();
+  nfcInitialized = true;
+  Serial.println("✓ NFC scanner initialized.");
 }
 
 String readNFCNDEFText() {
@@ -377,11 +364,7 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
   sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
   wsFlush();
-  unsigned long start = millis();
-  while (millis() - start < 3000) {
-    webSocket.loop();
-    delay(10);
-  }
+  delay(3000);
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
   return FINGERPRINT_OK;
 }
@@ -489,19 +472,36 @@ void sendLog(int studentID, String method) {
 
 void sendHeartbeat() {
   if (authToken == "" || scannerDbId == "") return;
+
+  // Read battery
+  int raw = analogRead(batteryPin);
+  float voltageAtPin = (raw / 4095.0) * VREF;
+  float batteryVoltage = voltageAtPin * ((R1 + R2)/R2) * calibrationFactor;
+
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(10000);
+
   if (!http.begin(client, String(serverEndpoint) + "/api/scanners/" + scannerDbId + "/heartbeat")) {
     http.end();
     return;
   }
+
+  http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + authToken);
-  int code = http.POST("");
+
+  StaticJsonDocument<128> doc;
+  doc["battery_level"] = batteryVoltage;
+
+  String body;
+  serializeJson(doc, body);
+
+  int code = http.POST(body);
   if (code != 200) {
     authToken = "";
   }
+
   http.end();
 }
 
@@ -895,25 +895,9 @@ void flushOfflineLogs() {
   }
 }
 
-int readStableADC() {
-  int sum = 0;
-  for (int i = 0; i < 30; i++) {
-    sum += analogRead(batteryPin);
-    delayMicroseconds(500);
-  }
-  return sum / 30;
-}
-
 // ========== SETUP ==========
 void setup() {
   Serial.begin(115200);
-  count = 1;
-  analogReadResolution(12);
-  analogSetPinAttenuation(batteryPin, ADC_11db);
-  
-  for(int i = 0; i < 10; i++) {
-    analogRead(batteryPin);  // Prime the ADC
-  }
   delay(1000);
 
   Serial.println("\n========== BLUEPRINT SCANNER STARTUP ==========");
@@ -946,12 +930,31 @@ void setup() {
 void loop() {
     webSocket.loop();
 
-    initializeNFC();
+    if (mode == "scanner") {
+    static unsigned long nfcWindowStart = 0;
+    static bool nfcActive = true;
 
-    if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
-        lastNFCCheck = millis();
-        handleNFCCardNonBlocking();
+    if (nfcActive) {
+        if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
+            lastNFCCheck = millis();
+            handleNFCCardNonBlocking();
+        }
+        if (millis() - nfcWindowStart >= 500) {
+            nfcActive = false;
+            nfcWindowStart = millis();
+            Wire.end();
+            delay(50);
+            Wire.begin(33, 32);
+            nfc.begin();
+            nfc.SAMConfig();
+        }
+    } else {
+        if (millis() - nfcWindowStart >= 2000) {
+            nfcActive = true;
+            nfcWindowStart = millis();
+        }
     }
+}
 
     static unsigned long lastWifiRetry = 0;
     static bool wifiJustConnected = false;
@@ -988,26 +991,17 @@ void loop() {
         int fingerID = scanFingerprint();
         if (fingerID >= 0) {
             int studentID = findStudent(fingerID);
-            if (studentID != 0) {
+            if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
                     // Queue the log, don't block here
                     pendingLog.studentID = studentID;
                     strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
                     pendingLog.pending = true;
-                    unsigned long start = millis();
-                    while (millis() - start < 1000) {
-                      webSocket.loop();
-                      delay(10);
-                    };
                     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                     sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
                 }
-                unsigned long start = millis();
-                while (millis() - start < 3000) {
-                  webSocket.loop();
-                  delay(10);
-                };
+                delay(3000);
             }
         }
     }
@@ -1024,14 +1018,11 @@ void loop() {
         lastHeartbeat = millis();
     }
 
-    if(!nfcInitialized) {
-      flashBoardLED(2000);
-    }
+    int raw = analogRead(batteryPin);
+    float voltageAtPin = (raw / 4095.0) * VREF;
+    float batteryVoltage = voltageAtPin * ((R1 + R2)/R2) * calibrationFactor;
 
-  int raw = analogRead(batteryPin);
-  float voltageAtPin = (raw / 4095.0) * VREF;
-  float batteryVoltage = voltageAtPin * ((R1 + R2)/R2) * calibrationFactor;
-  delay(10);
+    delay(10);
 }
 
 bool writeNFCText(String text) {
@@ -1090,9 +1081,6 @@ void handleNFCCardNonBlocking() {
                   delay(500);
                   writeNFCText("Successfully emptied NFC Payload!");
                   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
-                  if(!fingerprintInitialized) {
-                    flashBoardLED(1000);
-                  }
                   sendLog(studentID, "NFC");
                   sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
                   
@@ -1100,15 +1088,10 @@ void handleNFCCardNonBlocking() {
                   sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
             } else {
-              //sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+              sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
             }
         }
         // Optional: add a short delay to avoid reading the same card repeatedly
-
-        unsigned long start = millis();
-      while (millis() - start < 500) {
-        webSocket.loop();
-        delay(10);
-      }  // prevents multiple logs for one tap
+        delay(500);   // prevents multiple logs for one tap
     }
 }
