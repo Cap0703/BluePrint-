@@ -129,7 +129,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-///FingerprintLogoWidget *REMEMBER TO CHANGE THIS TO THE REAL LOGO LAYER
+///FingerprintLogoWidget
 class FingerprintIcon extends StatelessWidget { 
   const FingerprintIcon({super.key});
 
