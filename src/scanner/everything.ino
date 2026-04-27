@@ -903,9 +903,27 @@ void setup() {
 void loop() {
     webSocket.loop();
 
-    if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
-        lastNFCCheck = millis();
-        handleNFCCardNonBlocking();
+    if (mode == "scanner") {
+        static unsigned long nfcWindowStart = 0;
+        static bool nfcActive = true;
+
+        if (nfcActive) {
+            if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
+                lastNFCCheck = millis();
+                handleNFCCardNonBlocking();
+            }
+            if (millis() - nfcWindowStart >= 500) {
+                // polling window over, pause for 1 second
+                nfcActive = false;
+                nfcWindowStart = millis();
+            }
+        } else {
+            if (millis() - nfcWindowStart >= 1000) {
+                // pause over, resume polling
+                nfcActive = true;
+                nfcWindowStart = millis();
+            }
+        }
     }
 
     static unsigned long lastWifiRetry = 0;
