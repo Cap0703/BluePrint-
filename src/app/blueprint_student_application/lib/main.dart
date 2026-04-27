@@ -115,7 +115,9 @@ class HomeScreen extends StatelessWidget {
               children: [
                 nfcScannerButtonEnable(studentID: studentID, token: token),
                 nfcScannerButtonDisable(),
+                const SizedBox(height: 20),
                 const loginInstructionText(),
+                const SizedBox(height: 4),
                 const loginInstructionImage(),
 
               ],
