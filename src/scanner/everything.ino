@@ -901,9 +901,9 @@ void setup() {
 
 // ========== LOOP ========== 
 void loop() {
-    webSocket.loop();
+  webSocket.loop();
 
-    if (mode == "scanner") {
+  if (mode == "scanner") {
     static unsigned long nfcWindowStart = 0;
     static bool nfcActive = true;
 
@@ -927,71 +927,71 @@ void loop() {
             nfcWindowStart = millis();
         }
     }
-}
+  }
 
-    static unsigned long lastWifiRetry = 0;
-    static bool wifiJustConnected = false;
+  static unsigned long lastWifiRetry = 0;
+  static bool wifiJustConnected = false;
 
-    if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
-        WifiConnected = true;
-        wifiJustConnected = true;
-        Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
-        updateLedStatus();
-    } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
-        WifiConnected = false;
-        updateLedStatus();
-    } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
-        if (millis() - lastWifiRetry > 300000) {
-            lastWifiRetry = millis();
-            Serial.println("[WIFI] Attempting reconnect...");
-            connectWifi();
-        }
-    }
+  if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+      WifiConnected = true;
+      wifiJustConnected = true;
+      Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+      updateLedStatus();
+  } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
+      WifiConnected = false;
+      updateLedStatus();
+  } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
+      if (millis() - lastWifiRetry > 300000) {
+          lastWifiRetry = millis();
+          Serial.println("[WIFI] Attempting reconnect...");
+          connectWifi();
+      }
+  }
 
-    if (wifiJustConnected) {
-        wifiJustConnected = false;
-        if (signIn()) {
-            flushOfflineLogs();
-        }
-        webSocket.beginSSL(wsHost, wsPort, wsPath);
-        webSocket.onEvent(onWebSocketEvent);
-        webSocket.setReconnectInterval(5000);
-    }
+  if (wifiJustConnected) {
+      wifiJustConnected = false;
+      if (signIn()) {
+          flushOfflineLogs();
+      }
+      webSocket.beginSSL(wsHost, wsPort, wsPath);
+      webSocket.onEvent(onWebSocketEvent);
+      webSocket.setReconnectInterval(5000);
+  }
 
-    updateLedStatus();
+  updateLedStatus();
 
-    if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
-        int fingerID = scanFingerprint();
-        if (fingerID >= 0) {
-            int studentID = findStudent(fingerID);
-            if (studentID > 0) {
-                finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                if (mode == "scanner") {
-                    // Queue the log, don't block here
-                    pendingLog.studentID = studentID;
-                    strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
-                    pendingLog.pending = true;
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
-                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                }
-                delay(3000);
-            }
-        }
-    }
+  if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
+      int fingerID = scanFingerprint();
+      if (fingerID >= 0) {
+          int studentID = findStudent(fingerID);
+          if (studentID > 0) {
+              finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+              if (mode == "scanner") {
+                  // Queue the log, don't block here
+                  pendingLog.studentID = studentID;
+                  strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
+                  pendingLog.pending = true;
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+              }
+              delay(3000);
+          }
+      }
+  }
 
-    // Process pending log separately so it doesn't block scanning
-    if (pendingLog.pending) {
-        pendingLog.pending = false;
-        sendLog(pendingLog.studentID, String(pendingLog.method));
-    }
+  // Process pending log separately so it doesn't block scanning
+  if (pendingLog.pending) {
+      pendingLog.pending = false;
+      sendLog(pendingLog.studentID, String(pendingLog.method));
+  }
 
-    static unsigned long lastHeartbeat = 0;
-    if (millis() - lastHeartbeat > 5000) {
-        sendHeartbeat();
-        lastHeartbeat = millis();
-    }
+  static unsigned long lastHeartbeat = 0;
+  if (millis() - lastHeartbeat > 5000) {
+      sendHeartbeat();
+      lastHeartbeat = millis();
+  }
 
-    delay(10);
+  delay(10);
 }
 
 bool writeNFCText(String text) {
