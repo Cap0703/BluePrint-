@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:nfc_manager/nfc_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   runApp(const MyApp());
 }
@@ -115,9 +116,8 @@ class HomeScreen extends StatelessWidget {
               children: [
                 nfcScannerButtonEnable(studentID: studentID, token: token),
                 nfcScannerButtonDisable(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 40),
                 const loginInstructionText(),
-                const SizedBox(height: 4),
                 const loginInstructionImage(),
 
               ],
@@ -301,9 +301,9 @@ class ContinueButton extends StatelessWidget {
     );
   }
 }
-Future<String> getNFCMessage (String studentID, String token) {
+Future<String> getNFCMessage (String studentID, String token) async{
   final url = Uri.parse("https://blueprint.boo/api/app/encrypt_student_id");
-  final response = http.post(url,
+  final response = await http.post(url,
     headers: {
       "Content-Type": "application/json",
       "Authorization": "Bearer $token"
@@ -312,10 +312,9 @@ Future<String> getNFCMessage (String studentID, String token) {
       "student_id": studentID
     }),
     );
-    return response.then((res) {
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        String? encryptedID = data["encrypted_id"];
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        String? encryptedID = data["encryptedID"];
         if (encryptedID != null && encryptedID.isNotEmpty) {
           print("Encrypted ID received: $encryptedID");
           return encryptedID;
@@ -324,16 +323,13 @@ Future<String> getNFCMessage (String studentID, String token) {
           return '';
         }
       } else {
-        print("Failed to get NFC message: ${res.statusCode}");
+        print("Failed to get NFC message: ${response.statusCode}");
         return '';
       }
-    }).catchError((e) {
-      print("Error fetching NFC message: $e");
-      return '';
-    });
+    }
     // add functionality to grab message to send to NFC tag from backend using JWT
     
-}
+
 
 Future<void> writeNFCTag(String message) async {
   NfcManager.instance.startSession(
@@ -395,12 +391,12 @@ class nfcScannerButtonEnable extends StatelessWidget {
           
       },
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.indigo.shade700,
+        backgroundColor: const Color.fromARGB(255, 57, 242, 16),
         padding: const EdgeInsets.symmetric(
           horizontal: 40,
           vertical: 20,
         ),
-        textStyle: const TextStyle(fontSize: 18),
+        textStyle: const TextStyle(fontSize: 18, color: Color.fromARGB(255, 5, 88, 7)),
       ),
       child: const Text('Open Scanner'),
     );
@@ -427,7 +423,8 @@ class nfcScannerButtonDisable extends StatelessWidget {
           horizontal: 40,
           vertical: 20,
         ),
-        textStyle: const TextStyle(fontSize: 18),
+        textStyle: const TextStyle(fontSize: 18, color: Color.fromARGB(255, 92, 9, 9)),
+         
       ),
       child: const Text('Close Scanner'),
     );
