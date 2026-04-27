@@ -13,8 +13,8 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54";
-const char password[] = "silentbird445";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
@@ -63,6 +63,14 @@ bool WifiConnected = false;
 bool fingerprintInitialized = false;
 bool nfcInitialized = false;
 uint8_t lastLedColor = FINGERPRINT_LED_RED;
+
+//log pending
+struct PendingLog {
+  int studentID;
+  char method[16];
+  bool pending;
+};
+PendingLog pendingLog = {0, "", false};
 
 // Virtual fingerprint mapping: slot -> student ID
 #define MAX_FINGERPRINT_SLOTS 127
@@ -895,10 +903,31 @@ void setup() {
 void loop() {
     webSocket.loop();
 
-    if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
-        lastNFCCheck = millis();
-        handleNFCCardNonBlocking();
+    if (mode == "scanner") {
+    static unsigned long nfcWindowStart = 0;
+    static bool nfcActive = true;
+
+    if (nfcActive) {
+        if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
+            lastNFCCheck = millis();
+            handleNFCCardNonBlocking();
+        }
+        if (millis() - nfcWindowStart >= 500) {
+            nfcActive = false;
+            nfcWindowStart = millis();
+            Wire.end();
+            delay(50);
+            Wire.begin(33, 32);
+            nfc.begin();
+            nfc.SAMConfig();
+        }
+    } else {
+        if (millis() - nfcWindowStart >= 2000) {
+            nfcActive = true;
+            nfcWindowStart = millis();
+        }
     }
+}
 
     static unsigned long lastWifiRetry = 0;
     static bool wifiJustConnected = false;
@@ -938,14 +967,22 @@ void loop() {
             if (studentID > 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                    sendLog(studentID, "fingerprint");
-                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
+                    // Queue the log, don't block here
+                    pendingLog.studentID = studentID;
+                    strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
+                    pendingLog.pending = true;
                     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
                 }
                 delay(3000);
             }
         }
+    }
+
+    // Process pending log separately so it doesn't block scanning
+    if (pendingLog.pending) {
+        pendingLog.pending = false;
+        sendLog(pendingLog.studentID, String(pendingLog.method));
     }
 
     static unsigned long lastHeartbeat = 0;

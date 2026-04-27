@@ -13,12 +13,13 @@
 #include <WebSocketsClient.h>
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "BraveWeb";
-const char password[] = "Br@veW3b";
+const char ssid[] = "NETGEAR54";
+const char password[] = "silentbird445";
+
 WebSocketsClient webSocket;
 
 const char* SCANNER_ID = "1";
-const char* SCANNER_LOCATION = "204";
+const char* SCANNER_LOCATION = "304";
 const char* SCANNER_PASSWORD = "BluePrint";
 
 const char* serverEndpoint = "https://blueprint.boo";
@@ -27,12 +28,20 @@ const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 0;
-const int daylightOffset_sec = 0;
-#define BOARD_LED 2
+const long gmtOffset_sec = 16 * 3600;
+const int daylightOffset_sec = 3600;
 
-unsigned long ledConfirmStart = 0;
-bool ledConfirmActive = false;
+const int batteryPin = 34;
+
+const float R1 = 38600.0;
+const float R2 = 20870.0;
+
+int count = 0;
+
+float calibrationFactor = 4.138 / 5.605;
+const float VREF = 3.278;
+
+#define BOARD_LED 2
 
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
@@ -66,6 +75,14 @@ bool WifiConnected = false;
 bool fingerprintInitialized = false;
 bool nfcInitialized = false;
 uint8_t lastLedColor = FINGERPRINT_LED_RED;
+
+//log pending
+struct PendingLog {
+  int studentID;
+  char method[16];
+  bool pending;
+};
+PendingLog pendingLog = {0, "", false};
 
 // Virtual fingerprint mapping: slot -> student ID
 #define MAX_FINGERPRINT_SLOTS 127
@@ -101,6 +118,12 @@ String readNFCASCII();
 void queueOfflineLog(int studentID, String method);
 void flushOfflineLogs();
 
+
+void flashBoardLED(unsigned long durationMs) {
+  digitalWrite(BOARD_LED, HIGH);
+  delay(durationMs);
+  digitalWrite(BOARD_LED, LOW);
+}
 // ========== FINGERPRINT ==========
 void initializeFingerprint() {
   mySerial.begin(57600, SERIAL_8N1, RX_GPIO, TX_GPIO);
@@ -134,16 +157,21 @@ void initializeNFC() {
   
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
-    Serial.println("✗ Did not find PN532 NFC board");
+    //Serial.println("✗ Did not find PN532 NFC board");
     nfcInitialized = false;
     return;
   }
-  
-  Serial.print("✓ Found PN5");
-  
-  nfc.SAMConfig();
-  nfcInitialized = true;
-  Serial.println("✓ NFC scanner initialized.");
+  if(count == 1) {
+    Serial.print("✓ Found PN5");
+    nfc.SAMConfig();
+    nfcInitialized = true;
+    Serial.println("✓ NFC scanner initialized.");
+    count = 2;
+  }
+  else {
+    nfc.SAMConfig();
+    nfcInitialized = true;
+  }
 }
 
 String readNFCNDEFText() {
@@ -349,7 +377,11 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
   sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
   wsFlush();
-  delay(3000);
+  unsigned long start = millis();
+  while (millis() - start < 3000) {
+    webSocket.loop();
+    delay(10);
+  }
   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
   return FINGERPRINT_OK;
 }
@@ -441,7 +473,7 @@ void sendLog(int studentID, String method) {
   doc["student_id"]       = studentID;
   doc["date_scanned"]     = dateStr;
   doc["time_scanned"]     = timeStr;
-  doc["status"]           = "Unknown";
+  doc["status"]           = "present";
   doc["method"]           = method;
 
   String body;
@@ -835,7 +867,7 @@ void flushOfflineLogs() {
     doc["student_id"]       = entry.studentID;
     doc["date_scanned"]     = entry.date;
     doc["time_scanned"]     = entry.time;
-    doc["status"]           = "Unknown";
+    doc["status"]           = "present";
     doc["method"]           = entry.method;
 
     String body;
@@ -863,18 +895,26 @@ void flushOfflineLogs() {
   }
 }
 
-void flashBoardLED(unsigned long durationMs) {
-  digitalWrite(BOARD_LED, HIGH);
-  delay(durationMs);
-  digitalWrite(BOARD_LED, LOW);
+int readStableADC() {
+  int sum = 0;
+  for (int i = 0; i < 30; i++) {
+    sum += analogRead(batteryPin);
+    delayMicroseconds(500);
+  }
+  return sum / 30;
 }
 
 // ========== SETUP ==========
 void setup() {
   Serial.begin(115200);
+  count = 1;
+  analogReadResolution(12);
+  analogSetPinAttenuation(batteryPin, ADC_11db);
+  
+  for(int i = 0; i < 10; i++) {
+    analogRead(batteryPin);  // Prime the ADC
+  }
   delay(1000);
-  pinMode(BOARD_LED, OUTPUT);
-  digitalWrite(BOARD_LED, LOW);
 
   Serial.println("\n========== BLUEPRINT SCANNER STARTUP ==========");
   
@@ -895,8 +935,6 @@ void setup() {
 
   Serial.println("[INIT] Syncing time with NTP (non-blocking)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  setenv("TZ", "PST8PDT", 1);
-  tzset();
   // Don't wait -- NTP will sync in the background.
   // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
   // so offline logs queued before sync will just have fallback timestamps.
@@ -904,9 +942,11 @@ void setup() {
   Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
-// ========== LOOP ==========
+// ========== LOOP ========== 
 void loop() {
     webSocket.loop();
+
+    initializeNFC();
 
     if (mode == "scanner" && millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
         lastNFCCheck = millis();
@@ -948,17 +988,34 @@ void loop() {
         int fingerID = scanFingerprint();
         if (fingerID >= 0) {
             int studentID = findStudent(fingerID);
-            if (studentID > 0) {
+            if (studentID != 0) {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
-                    sendLog(studentID, "fingerprint");
-                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                    delay(1000);
+                    // Queue the log, don't block here
+                    pendingLog.studentID = studentID;
+                    strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
+                    pendingLog.pending = true;
+                    unsigned long start = millis();
+                    while (millis() - start < 1000) {
+                      webSocket.loop();
+                      delay(10);
+                    };
                     finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
                 }
-                delay(3000);
+                unsigned long start = millis();
+                while (millis() - start < 3000) {
+                  webSocket.loop();
+                  delay(10);
+                };
             }
         }
+    }
+
+    // Process pending log separately so it doesn't block scanning
+    if (pendingLog.pending) {
+        pendingLog.pending = false;
+        sendLog(pendingLog.studentID, String(pendingLog.method));
     }
 
     static unsigned long lastHeartbeat = 0;
@@ -967,7 +1024,50 @@ void loop() {
         lastHeartbeat = millis();
     }
 
-    delay(10);
+    if(!nfcInitialized) {
+      flashBoardLED(2000);
+    }
+
+  int raw = analogRead(batteryPin);
+  float voltageAtPin = (raw / 4095.0) * VREF;
+  float batteryVoltage = voltageAtPin * ((R1 + R2)/R2) * calibrationFactor;
+  delay(10);
+}
+
+bool writeNFCText(String text) {
+    // Build NDEF text record
+    uint8_t textLen = text.length();
+    uint8_t payloadLen = 3 + textLen; // status byte + "en" lang + text
+    uint8_t msgLen = 3 + payloadLen;  // record header + payload
+
+    // Full NDEF message buffer (pages 4-7 = 16 bytes)
+    uint8_t buf[16] = {0};
+    int i = 0;
+    buf[i++] = 0x03;        // NDEF TLV type
+    buf[i++] = msgLen;      // message length
+    buf[i++] = 0xD1;        // MB ME SR=1, TNF=0x01 (Well Known)
+    buf[i++] = 0x01;        // type length = 1
+    buf[i++] = payloadLen;  // payload length
+    buf[i++] = 'T';         // type = Text
+    buf[i++] = 0x02;        // status: UTF-8, lang length = 2
+    buf[i++] = 'e';         // lang: "en"
+    buf[i++] = 'n';
+    for (int j = 0; j < textLen && i < 15; j++) {
+        buf[i++] = text[j];
+    }
+    buf[i] = 0xFE;          // TLV terminator
+
+    // Write 4 bytes per page starting at page 4
+    for (int page = 4; page <= 7; page++) {
+        uint8_t pageData[4];
+        memcpy(pageData, &buf[(page - 4) * 4], 4);
+        if (!nfc.ntag2xx_WritePage(page, pageData)) {
+            Serial.println("[NFC] Write failed on page " + String(page));
+            return false;
+        }
+    }
+    Serial.println("[NFC] Wrote \"" + text + "\" to tag.");
+    return true;
 }
 
 void handleNFCCardNonBlocking() {
@@ -987,21 +1087,28 @@ void handleNFCCardNonBlocking() {
                 if (isNumeric && nfcText.length() > 0) {
                   int studentID = nfcText.toInt();
                   finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
+                  delay(500);
+                  writeNFCText("Successfully emptied NFC Payload!");
+                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
                   if(!fingerprintInitialized) {
                     flashBoardLED(1000);
                   }
                   sendLog(studentID, "NFC");
                   sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-                  delay(1000);
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+                  
                 } else {
                   sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
             } else {
-              sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+              //sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
             }
         }
         // Optional: add a short delay to avoid reading the same card repeatedly
-        delay(500);   // prevents multiple logs for one tap
+
+        unsigned long start = millis();
+      while (millis() - start < 500) {
+        webSocket.loop();
+        delay(10);
+      }  // prevents multiple logs for one tap
     }
 }

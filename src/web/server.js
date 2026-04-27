@@ -1578,11 +1578,17 @@ app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
 
 app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
   const { id } = req.params;
+  const { battery_level } = req.body;
+
   try {
-    await pool.query(
-      `UPDATE scanners SET last_sync = NOW(), scanner_status = 'online' WHERE id = $1`,
-      [id]
-    );
+    let query = `UPDATE scanners SET last_sync = NOW(), scanner_status = 'online'`;
+    const params = [id];
+    if (battery_level !== undefined && !isNaN(battery_level)) {
+      query += `, battery_level = $2`;
+      params.push(battery_level);
+    }
+    query += ` WHERE id = $1`;
+    await pool.query(query, params);
     res.json({ message: 'Heartbeat received' });
   } catch (err) {
     console.error(err);
