@@ -348,7 +348,7 @@ Future<String> getNFCMessage (String studentID, String token) async{
     );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        String? encryptedID = data["encryptedID"];
+        String? encryptedID = data["encryptedData"];
         if (encryptedID != null && encryptedID.isNotEmpty) {
           print("Encrypted ID received: $encryptedID");
           return encryptedID;
