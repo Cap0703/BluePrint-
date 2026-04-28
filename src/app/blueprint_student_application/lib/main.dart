@@ -389,18 +389,8 @@ Future<void> writeNFCTag(String message) async {
         Ndef? ndef = Ndef.from(tag);
 
         if (ndef == null) {
-          // Tag may be blank — try formatting it
-          final ndefFormatable = NdefFormatable.from(tag);
-          if (ndefFormatable == null) {
-            print('Tag does not support NDEF or formatting');
-            await NfcManager.instance.stopSession();
-            isScanning = false;
-            return;
-          }
-          final record = NdefRecord.createText(message);
-          final messageNdef = NdefMessage([record]);
-          await ndefFormatable.format(messageNdef);
-          print('Successfully formatted and wrote to NFC tag');
+          print('Tag does not support NDEF or formatting');
+          return;
         } else {
           if (!ndef.isWritable) {
             print('Tag is read-only');
