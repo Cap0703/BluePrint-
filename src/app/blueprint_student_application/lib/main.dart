@@ -8,6 +8,22 @@ void main() {
   runApp(const MyApp());
 }
 
+Future<String> getUUID() async {
+  final prefs  = await SharedPreferences.getInstance();
+  String? storedUUID = prefs.getString('device_uuid');
+  
+  if (storedUUID != null && storedUUID.isNotEmpty) {
+    return storedUUID;
+  }
+
+  final uuid = Uuid();
+  String newUUID = uuid.v4();
+
+  await prefs.setString('device_uuid', newUUID);
+
+  return newUUID;
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
@@ -240,12 +256,12 @@ class ContinueButton extends StatelessWidget {
   final TextEditingController sIDController;
   final TextEditingController passwordController;
   ContinueButton({super.key, required this.formKey, required this.sIDController, required this.passwordController});
-  final uuid = Uuid();
+  
 
   Future<String> authenticateUser(BuildContext context) async {
     String studentID = sIDController.text;
     String password = passwordController.text;
-    String uuID = uuid.v4();
+    String uuID = await getUUID();
 
     final url = Uri.parse("https://blueprint.boo/api/app/auth/login");
   try {
@@ -299,7 +315,7 @@ class ContinueButton extends StatelessWidget {
         if (formKey.currentState!.validate()){
           String studentID = sIDController.text;
           String password = passwordController.text;
-          String uuID = uuid.v4();
+          String uuID = await getUUID();
           await authenticateUser(context);
           print("Student ID: $studentID");
           print("Password: $password");
@@ -345,29 +361,46 @@ Future<String> getNFCMessage (String studentID, String token) async{
         return '';
       }
     }
-    // add functionality to grab message to send to NFC tag from backend using JWT
-    
+bool isScanning = false;
+bool cancelRequested = false;
+
+void resetCancelCall(){
+  cancelRequested = false;
+}
 
 
 Future<void> writeNFCTag(String message) async {
+  resetCancelCall();
+  isScanning = true;
   NfcManager.instance.startSession(
     pollingOptions: {
       NfcPollingOption.iso14443,
       NfcPollingOption.iso15693,
     },
     onDiscovered: (NfcTag tag) async {
+
+      if (cancelRequested) {
+        print("Close Scanner stopped the session");
+        NfcManager.instance.stopSession();
+        isScanning = false;
+        return;
+      }
+
+
       try {
       final ndef = Ndef.from(tag);
 
       if (ndef == null) {
         print('Tag does not support NDEF');
         NfcManager.instance.stopSession();
+        isScanning = false;
         return;
       }
 
       if (!ndef.isWritable) {
         print('Tag is read-only');
         NfcManager.instance.stopSession();
+        isScanning = false;
         return;
       }
 
@@ -380,11 +413,12 @@ Future<void> writeNFCTag(String message) async {
 
         print('Successfully wrote to NFC tag');
 
-        NfcManager.instance.stopSession();
       } catch (e) {
         print('Write failed: $e');
-        NfcManager.instance.stopSession();
       }
+
+      NfcManager.instance.stopSession();
+      isScanning = false;
     },
   );
 }
@@ -399,14 +433,21 @@ class nfcScannerButtonEnable extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton(
       onPressed: () async {
-          String message = await getNFCMessage(studentID, token);
-          if (message.isNotEmpty){
-            writeNFCTag(message);
-          }
-          else {
-            print("Message write request failed");
-          }
+        if(isScanning) {
+          print ("Scanner already active");
+          return;
           
+        }
+
+        String message = await getNFCMessage(studentID, token);
+        
+        if (message.isNotEmpty){
+          writeNFCTag(message);
+        }
+        else {
+          print("Message write request failed");
+        }
+        
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color.fromARGB(255, 57, 242, 16),
@@ -432,7 +473,14 @@ class nfcScannerButtonDisable extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton(
       onPressed: () {
+        if (isScanning) {
+          cancelRequested = true;
+          isScanning = false;
+          NfcManager.instance.stopSession();
+
           
+          print("Close Scanner Button Pressed: Stop Requested");
+        }
         
       },
       style: ElevatedButton.styleFrom(
