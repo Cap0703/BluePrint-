@@ -1297,6 +1297,20 @@ app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
   }
 });
 
+app.post('/api/app/decrypt_student_id', verifyToken, (req, res) => {
+  const { encryptedData, iv, authTag, date } = req.body;
+  if (!encryptedData || !iv || !authTag || !date) {
+    return res.status(400).json({ error: 'Encrypted data, IV, auth tag, and date are required' });
+  }
+  try {
+    const decrypted = decrypt(encryptedData, iv, authTag, date);
+    res.json(decrypted);
+  } catch (err) {
+    console.error('Decryption error:', err);
+    res.status(500).json({ error: 'Failed to decrypt student ID' });
+  }
+});
+
 app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administrator'), async (req, res) => {
   const { id } = req.params;
   try {
