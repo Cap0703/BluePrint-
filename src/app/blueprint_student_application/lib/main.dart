@@ -368,43 +368,53 @@ void resetCancelCall(){
   cancelRequested = false;
 }
 
-
 Future<void> writeNFCTag(String message) async {
   resetCancelCall();
   isScanning = true;
 
+  print("NFC SESSION STARTED - TAP TAG NOW");
+
   await NfcManager.instance.startSession(
-    pollingOptions: {
-      NfcPollingOption.iso14443,
-    },
+    pollingOptions: {NfcPollingOption.iso14443},
     onDiscovered: (NfcTag tag) async {
+      print("TAG DETECTED");
+
       if (cancelRequested) {
-        print("Close Scanner stopped the session");
+        print("Session cancelled");
         await NfcManager.instance.stopSession();
         isScanning = false;
         return;
       }
 
       try {
-        Ndef? ndef = Ndef.from(tag);
+        final ndef = Ndef.from(tag);
 
+        // ❌ No formatting support (since no NdefFormatable)
         if (ndef == null) {
-          print('Tag does not support NDEF or formatting');
+          print("❌ TAG NOT NDEF FORMATTED - CANNOT WRITE");
+          await NfcManager.instance.stopSession();
+          isScanning = false;
           return;
-        } else {
-          if (!ndef.isWritable) {
-            print('Tag is read-only');
-            await NfcManager.instance.stopSession();
-            isScanning = false;
-            return;
-          }
-          final record = NdefRecord.createText(message);
-          final messageNdef = NdefMessage([record]);
-          await ndef.write(messageNdef);
-          print('Successfully wrote to NFC tag');
         }
+
+        if (!ndef.isWritable) {
+          print("❌ TAG IS READ ONLY");
+          await NfcManager.instance.stopSession();
+          isScanning = false;
+          return;
+        }
+
+        print("WRITING TO TAG...");
+
+        final record = NdefRecord.createText(message);
+        final msg = NdefMessage([record]);
+
+        await ndef.write(msg);
+
+        print("✅ WRITE SUCCESS");
+
       } catch (e) {
-        print('Write failed: $e');
+        print("❌ WRITE FAILED: $e");
       }
 
       await NfcManager.instance.stopSession();
