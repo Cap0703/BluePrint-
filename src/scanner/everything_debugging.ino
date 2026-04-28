@@ -144,7 +144,7 @@ void updateLedStatus() {
 
 // ========== NFC ==========
 void initializeNFC() {
-  Wire.begin(33, 32);
+  Wire.begin(21, 22);
   nfc.begin();
   
   uint32_t versiondata = nfc.getFirmwareVersion();
@@ -944,7 +944,7 @@ void loop() {
             nfcWindowStart = millis();
             Wire.end();
             delay(50);
-            Wire.begin(33, 32);
+            Wire.begin(21, 22);
             nfc.begin();
             nfc.SAMConfig();
         }
@@ -995,6 +995,11 @@ void loop() {
                 finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
                 if (mode == "scanner") {
                     // Queue the log, don't block here
+                    static unsigned long lastHeartbeat = 0;
+                    if (millis() - lastHeartbeat > 2000) {
+                        sendHeartbeat();
+                        lastHeartbeat = millis();
+                    }
                     pendingLog.studentID = studentID;
                     strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
                     pendingLog.pending = true;
@@ -1088,7 +1093,7 @@ void handleNFCCardNonBlocking() {
                   sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
                 }
             } else {
-              sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
+              //sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
             }
         }
         // Optional: add a short delay to avoid reading the same card repeatedly
