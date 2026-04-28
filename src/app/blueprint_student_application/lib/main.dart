@@ -372,52 +372,52 @@ void resetCancelCall(){
 Future<void> writeNFCTag(String message) async {
   resetCancelCall();
   isScanning = true;
-  NfcManager.instance.startSession(
+
+  await NfcManager.instance.startSession(
     pollingOptions: {
       NfcPollingOption.iso14443,
-      NfcPollingOption.iso15693,
     },
     onDiscovered: (NfcTag tag) async {
-
       if (cancelRequested) {
         print("Close Scanner stopped the session");
-        NfcManager.instance.stopSession();
+        await NfcManager.instance.stopSession();
         isScanning = false;
         return;
       }
-
 
       try {
-      final ndef = Ndef.from(tag);
+        Ndef? ndef = Ndef.from(tag);
 
-      if (ndef == null) {
-        print('Tag does not support NDEF');
-        NfcManager.instance.stopSession();
-        isScanning = false;
-        return;
-      }
-
-      if (!ndef.isWritable) {
-        print('Tag is read-only');
-        NfcManager.instance.stopSession();
-        isScanning = false;
-        return;
-      }
-
-        final record = NdefRecord.createText(message);
-        final messageNdef = NdefMessage([record]);
-        
-        await ndef.write(
-          messageNdef,
-        );
-
-        print('Successfully wrote to NFC tag');
-
+        if (ndef == null) {
+          // Tag may be blank — try formatting it
+          final ndefFormatable = NdefFormatable.from(tag);
+          if (ndefFormatable == null) {
+            print('Tag does not support NDEF or formatting');
+            await NfcManager.instance.stopSession();
+            isScanning = false;
+            return;
+          }
+          final record = NdefRecord.createText(message);
+          final messageNdef = NdefMessage([record]);
+          await ndefFormatable.format(messageNdef);
+          print('Successfully formatted and wrote to NFC tag');
+        } else {
+          if (!ndef.isWritable) {
+            print('Tag is read-only');
+            await NfcManager.instance.stopSession();
+            isScanning = false;
+            return;
+          }
+          final record = NdefRecord.createText(message);
+          final messageNdef = NdefMessage([record]);
+          await ndef.write(messageNdef);
+          print('Successfully wrote to NFC tag');
+        }
       } catch (e) {
         print('Write failed: $e');
       }
 
-      NfcManager.instance.stopSession();
+      await NfcManager.instance.stopSession();
       isScanning = false;
     },
   );
@@ -442,7 +442,7 @@ class nfcScannerButtonEnable extends StatelessWidget {
         String message = await getNFCMessage(studentID, token);
         
         if (message.isNotEmpty){
-          writeNFCTag(message);
+          await writeNFCTag(message);
         }
         else {
           print("Message write request failed");
