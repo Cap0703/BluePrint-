@@ -12,9 +12,13 @@
 #include <Wire.h>
 #include <WebSocketsClient.h>
 
+#define FINGERPRINT_LED_YELLOW 0x05
+#define FINGERPRINT_LED_CYAN 0x06
+#define FINGERPRINT_LED_WHITE 0x07
+
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54";
-const char password[] = "silentbird445";
+const char ssid[] = "NETGEAR54TP-Link_003Ext";
+const char password[] = "PIN12205486";
 
 WebSocketsClient webSocket;
 
@@ -39,7 +43,7 @@ const float R2 = 20870.0;
 int count = 0;
 
 float calibrationFactor = 4.138 / 5.605;
-const float VREF = 3.278;
+const float VREF = 3.378;
 
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
@@ -65,6 +69,13 @@ struct OfflineLog {
   char time[9];
 };
 
+#define BUTTON_PIN 25
+unsigned long buttonPressStart = 0;
+bool buttonLastState = HIGH;
+bool buttonPressed = false;
+
+const unsigned long SHORT_PRESS_TIME = 50;     // debounce threshold
+const unsigned long LONG_PRESS_TIME  = 1500;   // 1.5 seconds
 // ========== GLOBALS ==========
 String authToken = "";
 String scannerDbId = "";
@@ -142,6 +153,53 @@ void updateLedStatus() {
   }
 }
 
+
+void handleButton() {
+  bool currentState = digitalRead(BUTTON_PIN);
+
+  // Button pressed (falling edge)
+  if (buttonLastState == HIGH && currentState == LOW) {
+    buttonPressStart = millis();
+    buttonPressed = true;
+  }
+
+  // Button released (rising edge)
+  if (buttonLastState == LOW && currentState == HIGH && buttonPressed) {
+    unsigned long pressDuration = millis() - buttonPressStart;
+    buttonPressed = false;
+
+    // ---- SHORT PRESS ----
+    if (pressDuration > SHORT_PRESS_TIME && pressDuration < LONG_PRESS_TIME) {
+      if (mode == "scanner") {
+        mode = "enroll";
+        sendOutput("Mode set to enroll (button)", -1);
+        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_CYAN);
+      } else {
+        mode = "scanner";
+        sendOutput("Mode set to scanner (button)", -1);
+        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_BLUE);
+        updateLedStatus(); // restore normal LED logic
+      }
+    }
+
+    // ---- LONG PRESS ----
+    else if (pressDuration >= LONG_PRESS_TIME) {
+      sendOutput("Manual reconnect + reauth...", -1);
+      connectWifi();
+      if (signIn()) {
+        flushOfflineLogs();
+      }
+
+      // Optional: give visual feedback
+      for (int i = 0; i < 2; i++) {
+        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_YELLOW);
+        delay(1000);
+      }
+    }
+  }
+
+  buttonLastState = currentState;
+}
 // ========== NFC ==========
 void initializeNFC() {
   Wire.begin(21, 22);
@@ -723,6 +781,9 @@ void handleCommand(String cmd, int commandId) {
 
       if (result == FINGERPRINT_OK) {
         sendOutput("Enrollment successful (slot " + String(slot) + ")", commandId);
+        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_CYAN);
+        delay(500);
+
       } else {
         sendOutput("Enrollment failed.", commandId);
       }
@@ -899,6 +960,7 @@ void flushOfflineLogs() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   Serial.println("\n========== BLUEPRINT SCANNER STARTUP ==========");
   
@@ -1016,6 +1078,7 @@ void loop() {
         pendingLog.pending = false;
         sendLog(pendingLog.studentID, String(pendingLog.method));
     }
+    handleButton();
 
     static unsigned long lastHeartbeat = 0;
     if (millis() - lastHeartbeat > 5000) {
