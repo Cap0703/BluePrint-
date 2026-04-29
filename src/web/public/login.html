@@ -252,6 +252,33 @@
         </div>
     </div>
     <script>
+        // Clear stale tokens to prevent redirect loops
+        (async () => {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                try {
+                    // Try to validate the token by calling the API
+                    const response = await fetch('/api/auth/me', {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        // Token is valid, redirect to dashboard
+                        window.location.href = '/';
+                        return;
+                    } else {
+                        // Token is invalid, clear it
+                        localStorage.removeItem('auth_token');
+                        localStorage.removeItem('adminRole');
+                    }
+                } catch (err) {
+                    // Error checking token, clear it
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('adminRole');
+                }
+            }
+        })();
+
         const loginForm = document.getElementById('loginForm');
         const errorMessage = document.getElementById('errorMessage');
         const loading = document.getElementById('loading');
@@ -284,12 +311,6 @@
                 console.error('Login error:', err);
             } finally {
                 loading.style.display = 'none';
-            }
-        });
-        window.addEventListener('load', () => {
-            const token = localStorage.getItem('auth_token');
-            if (token) {
-                window.location.href = '/';
             }
         });
     </script>

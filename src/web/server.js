@@ -384,8 +384,6 @@ const loginLimiter = rateLimit({
   legacyHeaders: false
 });
 
-app.use(express.static(path.join(__dirname, "public")));
-
 
 
 /*----------------------------------------Authentication Middleware----------------------------------------*/
@@ -2276,7 +2274,7 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
   res.sendFile(path.join(__dirname, 'public', 'pages', 'admin.html'));
 });
 
-
+app.use(express.static(path.join(__dirname, "public")));
 
 /*----------------------------------------Start Server----------------------------------------*/
 async function startServer() {
