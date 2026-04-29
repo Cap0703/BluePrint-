@@ -1055,7 +1055,6 @@ function getDailyKey(dateString = null) {
     .digest()
     .subarray(0, 32);
 }
-
 function encrypt(text) {
   const key = getDailyKey();
   const iv = crypto.randomBytes(12);
@@ -1297,17 +1296,13 @@ app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
   }
 });
 
-app.post('/api/app/decrypt_student_id', verifyToken, (req, res) => {
+app.post('/api/scanner/decrypt', verifyToken, (req, res) => {
   const { encryptedData, iv, authTag, date } = req.body;
-  if (!encryptedData || !iv || !authTag || !date) {
-    return res.status(400).json({ error: 'Encrypted data, IV, auth tag, and date are required' });
-  }
   try {
-    const decrypted = decrypt(encryptedData, iv, authTag, date);
-    res.json(decrypted);
+    const studentID = decrypt(encryptedData, iv, authTag, date);
+    res.json({ student_id: studentID });
   } catch (err) {
-    console.error('Decryption error:', err);
-    res.status(500).json({ error: 'Failed to decrypt student ID' });
+    res.status(400).json({ error: 'Decryption failed' });
   }
 });
 
