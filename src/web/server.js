@@ -1,8 +1,34 @@
+/*
+====================================================================================
+ ____  _            ____       _       _        
+| __ )| |_   _  ___|  _ \ _ __(_)_ __ | |_      
+|  _ \| | | | |/ _ \ |_) | '__| | '_ \| __|     
+| |_) | | |_| |  __/  __/| |  | | | | | |_      
+|____/|_|\__,_|\___|_|   |_|  |_|_| |_|\__|  
+
+====================================================================================
+ AI-ASSISTED COMMENTS
+ All inline comments and JSDoc in this file were generated with the
+ assistance of ChatGPT and GitHub Copilot.
+ Individual AI-generated comment blocks are tagged with @ai-generated.
+====================================================================================
+*/
+
+
+
 import 'dotenv/config';
 
 // ===== ADD THIS FOR DEBUGGING =====
 const DEBUG_WS = true;  // Set to false to disable verbose logging
 process.env.TZ = "America/Los_Angeles";
+
+/**
+ * Logs a timestamped WebSocket debug message to the console.
+ * Only outputs when DEBUG_WS is true.
+ * @ai-generated
+ * @param {string} msg - The message to log.
+ * @param {object|null} [data=null] - Optional additional data to log alongside the message.
+ */
 function wsLog(msg, data = null) {
   if (DEBUG_WS) {
     const timestamp = new Date().toISOString();
@@ -81,6 +107,15 @@ let settings = { gracePeriodMinutes: ATTENDANCE_GRACE_PERIOD_MINUTES };
 
 const frontendSockets = new Set();
 
+/**
+ * WebSocket connection handler. Manages scanner and frontend client connections,
+ * routes messages between scanners and their associated frontend dashboards,
+ * and handles auth, output relay, and command forwarding over the socket.
+ * @ai-generated
+ * @event connection
+ * @param {WebSocket} ws - The newly connected WebSocket client.
+ * @param {http.IncomingMessage} req - The HTTP upgrade request.
+ */
 wss.on('connection', (ws, req) => {
   const connectionId = Math.random().toString(36).substr(2, 9);
   const remoteAddress = req.socket.remoteAddress;
@@ -214,6 +249,11 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+/**
+ * Loads application settings from the settings JSON file on disk.
+ * If the file doesn't exist or can't be parsed, falls back to defaults and saves them.
+ * @ai-generated
+ */
 function loadSettings() {
   try {
     const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
@@ -225,10 +265,20 @@ function loadSettings() {
   }
 }
 
+/**
+ * Persists the current in-memory settings object to the settings JSON file on disk.
+ * @ai-generated
+ */
 function saveSettings() {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
+/**
+ * Returns the current date as a YYYY-MM-DD string in the America/Los_Angeles timezone.
+ * @ai-generated
+ * @param {Date} [date=new Date()] - The date to format. Defaults to now.
+ * @returns {string} Date string in YYYY-MM-DD format.
+ */
 function getLosAngelesDateString(date = new Date()) {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
@@ -243,6 +293,15 @@ function getLosAngelesDateString(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Returns the list of courses visible to the given user.
+ * Administrators see all courses; teachers only see their assigned courses.
+ * @ai-generated
+ * @param {object} user - The authenticated user object from the JWT.
+ * @param {string} user.role - The user's role ('administrator' or 'teacher').
+ * @param {number[]} [user.courses] - Array of assigned course IDs (teachers only).
+ * @returns {Promise<object[]>} Array of course objects with id, room, and period.
+ */
 async function getVisibleCoursesForUser(user) {
   if (!user) return [];
   if (user.role === 'administrator') {
@@ -266,6 +325,14 @@ async function getVisibleCoursesForUser(user) {
   return result.rows;
 }
 
+/**
+ * Fetches the latest role and course assignments for a user directly from the database,
+ * merging them into the user object to ensure the JWT data isn't stale.
+ * @ai-generated
+ * @param {object} user - The user object, typically decoded from a JWT.
+ * @param {number} user.id - The user's database ID.
+ * @returns {Promise<object>} Updated user object with fresh role and courses from the DB.
+ */
 async function resolveUserCourseScope(user) {
   if (!user?.id) {
     return user || {};
@@ -287,10 +354,30 @@ async function resolveUserCourseScope(user) {
   };
 }
 
+/**
+ * Builds a composite string key from a room and period, used to match logs to courses.
+ * @ai-generated
+ * @param {string} room - The scanner/room identifier.
+ * @param {string} period - The class period label.
+ * @returns {string} A combined key in the format "room__period".
+ */
 function buildCourseScopeKey(room, period) {
   return [String(room || '').trim(), String(period || '').trim()].join('__');
 }
 
+/**
+ * Validates and scopes a teacher's log entry to their assigned course.
+ * Admins and scanners pass through without modification.
+ * Throws if the teacher has no assignments or the log doesn't match their assigned room/period.
+ * @ai-generated
+ * @param {object} rawLog - The raw log payload from the request body.
+ * @param {string} [rawLog.scanner_location] - The room the log is associated with.
+ * @param {string} [rawLog.period] - The period the log is associated with.
+ * @param {object} user - The authenticated user making the request.
+ * @param {string} user.role - The user's role.
+ * @returns {Promise<object>} The log payload, modified with the matched course's room/period if applicable.
+ * @throws {Error} If the teacher has no course assignments or the log falls outside their assigned class.
+ */
 async function applyTeacherLogScope(rawLog, user) {
   if (!user || user.role === 'administrator' || user.role === 'scanner' || user.scanner_id) {
     return { ...(rawLog || {}) };
@@ -325,6 +412,16 @@ async function applyTeacherLogScope(rawLog, user) {
   };
 }
 
+/**
+ * Verifies that the given user has permission to manage (edit/delete) a specific log entry.
+ * Admins can manage any log; teachers are restricted to logs within their assigned courses.
+ * @ai-generated
+ * @param {object} user - The authenticated user.
+ * @param {string} user.role - The user's role.
+ * @param {number|string} logId - The ID of the log entry to check.
+ * @returns {Promise<object>} The log row if the user is authorized.
+ * @throws {Error} With statusCode 404 if the log doesn't exist, or 403 if the user lacks permission.
+ */
 async function assertUserCanManageLog(user, logId) {
   const result = await pool.query('SELECT id, scanner_location, period FROM logs WHERE id = $1', [logId]);
   if (!result.rows.length) {
@@ -350,11 +447,26 @@ async function assertUserCanManageLog(user, logId) {
   return result.rows[0];
 }
 
+/**
+ * Filters a list of log entries down to only those matching the given courses.
+ * @ai-generated
+ * @param {object[]} logs - Full list of log objects to filter.
+ * @param {object[]} courses - List of allowed course objects with room and period fields.
+ * @returns {object[]} Subset of logs whose room+period matches one of the allowed courses.
+ */
 function filterLogsForCourses(logs, courses) {
   const allowedKeys = new Set(courses.map(course => buildCourseScopeKey(course.room, course.period)));
   return logs.filter(log => allowedKeys.has(buildCourseScopeKey(log.scanner_location, log.period)));
 }
 
+/**
+ * Fetches all logs visible to the given user, sorted newest-first.
+ * Administrators see all logs; teachers see only logs for their assigned courses.
+ * @ai-generated
+ * @param {object} user - The authenticated user.
+ * @param {string} user.role - The user's role.
+ * @returns {Promise<object[]>} Array of log objects sorted chronologically descending.
+ */
 async function getVisibleLogsForUser(user) {
   const result = await pool.query(`
     SELECT *
@@ -369,6 +481,11 @@ async function getVisibleLogsForUser(user) {
   return filterLogsForCourses(result.rows, visibleCourses).sort(compareLogsChronologically);
 }
 
+/**
+ * Rate limiter for the login endpoint.
+ * Allows a maximum of 10 attempts per 15-minute window, keyed by email + IP address.
+ * @ai-generated
+ */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -387,6 +504,15 @@ const loginLimiter = rateLimit({
 
 
 /*----------------------------------------Authentication Middleware----------------------------------------*/
+
+/**
+ * Express middleware that verifies a JWT from either the session or Authorization header.
+ * Attaches the decoded user payload to req.user on success.
+ * @ai-generated
+ * @param {express.Request} req
+ * @param {express.Response} res
+ * @param {express.NextFunction} next
+ */
 function verifyToken(req, res, next) {
   const token = req.session.user?.token || req.headers.authorization?.split(' ')[1];
   
@@ -403,6 +529,13 @@ function verifyToken(req, res, next) {
   }
 }
 
+/**
+ * Express middleware factory that restricts access to users with a specific role.
+ * Administrators always pass through regardless of the required role.
+ * @ai-generated
+ * @param {string} role - The minimum required role (e.g. 'administrator', 'teacher').
+ * @returns {express.RequestHandler} Middleware that enforces the role check.
+ */
 function requireRole(role) {
   return (req, res, next) => {
     if (!req.user) {
@@ -415,6 +548,14 @@ function requireRole(role) {
   };
 }
 
+/**
+ * Express middleware that redirects unauthenticated requests to the login page.
+ * Used for page routes (not API routes) to guard server-rendered HTML.
+ * @ai-generated
+ * @param {express.Request} req
+ * @param {express.Response} res
+ * @param {express.NextFunction} next
+ */
 function redirectIfNotAuthenticated(req, res, next) {
   const token = req.session.user?.token || req.headers.authorization?.split(' ')[1];
   
@@ -436,6 +577,11 @@ function redirectIfNotAuthenticated(req, res, next) {
 /*----------------------------------------Calendar Functions----------------------------------------*/
 let calendarCache = { data: null, lastUpdated: null, isUpdating: false };
 
+/**
+ * Loads the persisted calendar cache from disk into memory.
+ * Resets to an empty cache state if the file is missing or unreadable.
+ * @ai-generated
+ */
 function loadCalendarCache() {
   try {
     if (fs.existsSync(CALENDAR_CACHE_FILE)) {
@@ -457,6 +603,12 @@ function loadCalendarCache() {
   }
 }
 
+/**
+ * Saves new calendar data to both the in-memory cache and the cache file on disk.
+ * Updates the lastUpdated timestamp and clears the isUpdating flag.
+ * @ai-generated
+ * @param {object} data - The calendar data object to cache (should include an events array).
+ */
 function saveCalendarCache(data) {
   try {
     calendarCache = {
@@ -470,6 +622,12 @@ function saveCalendarCache(data) {
   }
 }
 
+/**
+ * Determines whether the calendar cache is stale and needs refreshing.
+ * Returns true if there is no lastUpdated timestamp or if more than 10 minutes have elapsed.
+ * @ai-generated
+ * @returns {boolean} True if the cache should be refreshed, false if it's still fresh.
+ */
 function shouldUpdateCache() {
   if (!calendarCache.lastUpdated) return true;
   const lastUpdate = new Date(calendarCache.lastUpdated);
@@ -478,6 +636,15 @@ function shouldUpdateCache() {
   return minutesSinceUpdate >= 10;
 }
 
+/**
+ * Spawns a Python subprocess to fetch calendar event data from the external API.
+ * Parses the stdout JSON result and rejects on non-zero exit codes or parse errors.
+ * @ai-generated
+ * @param {string|null} [date=null] - Optional date string (YYYY-MM-DD) to fetch events for.
+ *                                    Defaults to today if not provided.
+ * @returns {Promise<object>} Parsed calendar data object containing a date and events array.
+ * @throws {Error} If the Python script is not found, exits with an error, or returns invalid JSON.
+ */
 async function fetchCalendarFromAPI(date = null) {
   return new Promise((resolve, reject) => {
     const pythonScriptPath = path.join(__dirname, "api/calendar", "fetch_calendar.py");
@@ -527,6 +694,12 @@ async function fetchCalendarFromAPI(date = null) {
   });
 }
 
+/**
+ * Returns a hardcoded set of fallback period objects used when the calendar API is unavailable.
+ * Covers 4 standard periods for a typical school day.
+ * @ai-generated
+ * @returns {object[]} Array of period objects with title, startTime, and endTime fields.
+ */
 function getFallbackPeriods() {
   console.log('Using fallback period data for testing');
   return [
@@ -553,6 +726,13 @@ function getFallbackPeriods() {
   ];
 }
 
+/**
+ * Filters a raw list of calendar events down to class periods only,
+ * excluding events with titles containing "lunch", "break", or "transition".
+ * @ai-generated
+ * @param {object[]} events - Raw array of calendar event objects with a title field.
+ * @returns {object[]} Filtered array containing only class period events.
+ */
 function extractPeriods(events) {
   if (!Array.isArray(events)) return [];
   const periods = events.filter(event => {
@@ -563,6 +743,13 @@ function extractPeriods(events) {
   return periods;
 }
 
+/**
+ * Returns the class periods for a specific date, using the cache when available and fresh.
+ * Falls back to fetching from the API, then to hardcoded fallback periods on failure.
+ * @ai-generated
+ * @param {string} dateString - The date to retrieve periods for, in YYYY-MM-DD format.
+ * @returns {Promise<object[]>} Array of period objects with title, startTime, and endTime.
+ */
 async function getPeriodsForDate(dateString) {
   if (
     calendarCache.data &&
@@ -590,6 +777,12 @@ async function getPeriodsForDate(dateString) {
   return getFallbackPeriods();
 }
 
+/**
+ * Returns the class periods for today using the in-memory calendar cache.
+ * Falls back to hardcoded periods if the cache is empty.
+ * @ai-generated
+ * @returns {object[]} Array of today's period objects.
+ */
 function getPeriodsToday() {
   return extractPeriods(calendarCache.data?.events) || getFallbackPeriods();
 }
@@ -600,12 +793,25 @@ loadCalendarCache();
 
 /*----------------------------------------Log Functions----------------------------------------*/
 
+/**
+ * Converts a "HH:MM" or "HH:MM:SS" time string into the total number of minutes since midnight.
+ * @ai-generated
+ * @param {string} t - A time string in "HH:MM" or "HH:MM:SS" format.
+ * @returns {number|null} Total minutes since midnight, or null if the input is falsy.
+ */
 function timeToMinutes(t) {
   if (!t) return null;
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
 
+/**
+ * Extracts just the time portion from a log timestamp that may include a date prefix.
+ * If the value contains a space, returns only the last space-separated segment.
+ * @ai-generated
+ * @param {string} value - A time or datetime string (e.g. "2024-01-15 08:30:00" or "08:30:00").
+ * @returns {string|null} The time portion of the string, or null if the input is falsy.
+ */
 function extractLogTimeValue(value) {
   if (!value) return null;
   const normalized = String(value).trim();
@@ -614,6 +820,13 @@ function extractLogTimeValue(value) {
   return parts.length > 1 ? parts[parts.length - 1] : normalized;
 }
 
+/**
+ * Normalizes a date value for log entries, ensuring it is in YYYY-MM-DD format.
+ * Returns null for empty or invalid values.
+ * @ai-generated
+ * @param {string} value - A raw date string from the log payload.
+ * @returns {string|null} A normalized YYYY-MM-DD date string, or null if invalid.
+ */
 function normalizeLogDateValue(value) {
   const normalized = normalizeOptionalValue(value);
   if (!normalized) return null;
@@ -622,6 +835,13 @@ function normalizeLogDateValue(value) {
   return `${match[1]}-${match[2]}-${match[3]}`;
 }
 
+/**
+ * Normalizes a time value for log entries into HH:MM:SS format.
+ * Handles 12-hour AM/PM formats by converting to 24-hour, and pads hours/seconds as needed.
+ * @ai-generated
+ * @param {string} value - A raw time string from the log payload.
+ * @returns {string|null} A normalized HH:MM:SS time string, or null if the input is invalid.
+ */
 function normalizeLogTimeValue(value) {
   const normalized = normalizeOptionalValue(value);
   if (!normalized) return null;
@@ -635,6 +855,13 @@ function normalizeLogTimeValue(value) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+/**
+ * Computes a sortable Unix timestamp (ms) for a log entry based on its date and time fields.
+ * Returns NEGATIVE_INFINITY for logs with missing or unparseable timestamps so they sort last.
+ * @ai-generated
+ * @param {object} log - A log object with date_scanned and time_scanned fields.
+ * @returns {number} Unix timestamp in milliseconds, or Number.NEGATIVE_INFINITY if unavailable.
+ */
 function getLogTimestampValue(log) {
   const dateValue = normalizeLogDateValue(log?.date_scanned);
   const timeValue = normalizeLogTimeValue(log?.time_scanned);
@@ -643,12 +870,27 @@ function getLogTimestampValue(log) {
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
 }
 
+/**
+ * Comparator function for sorting log entries in descending chronological order (newest first).
+ * Uses the log ID as a tiebreaker when timestamps are identical.
+ * @ai-generated
+ * @param {object} left - A log object.
+ * @param {object} right - Another log object.
+ * @returns {number} Negative if right is older, positive if right is newer, 0 if equal.
+ */
 function compareLogsChronologically(left, right) {
   const timestampDiff = getLogTimestampValue(right) - getLogTimestampValue(left);
   if (timestampDiff !== 0) return timestampDiff;
   return Number(right?.id || 0) - Number(left?.id || 0);
 }
 
+/**
+ * Normalizes an optional field value by trimming whitespace and returning null
+ * for empty strings and common placeholder values like "auto", "null", "auto assign".
+ * @ai-generated
+ * @param {*} value - Any raw input value to normalize.
+ * @returns {string|null} The trimmed string value, or null if it's blank or a placeholder.
+ */
 function normalizeOptionalValue(value) {
   if (value === undefined || value === null) return null;
   const normalized = String(value).trim();
@@ -663,6 +905,19 @@ function normalizeOptionalValue(value) {
   return normalized;
 }
 
+/**
+ * Determines the attendance status ('on-time' or 'Late') for a log entry
+ * based on the scan time relative to the period's start time and the grace period setting.
+ * Returns null if the status cannot be determined (missing period, time, or match).
+ * Skips calculation if the log already has a meaningful status.
+ * @ai-generated
+ * @param {object} log - The log entry to evaluate.
+ * @param {string} [log.status] - Existing status value (skips calculation if already set).
+ * @param {string} [log.period] - The period title assigned to this log.
+ * @param {string} [log.time_scanned] - The time the student was scanned.
+ * @param {object[]} periods - Array of period objects with title, startTime, and endTime.
+ * @returns {string|null} 'on-time', 'Late', or null if status cannot be assigned.
+ */
 function assignStatusForLog(log, periods) {
   const normalizedStatus = normalizeOptionalValue(log.status);
   if (!normalizedStatus || normalizedStatus === 'Unknown' || normalizedStatus === 'na') {
@@ -683,6 +938,17 @@ function assignStatusForLog(log, periods) {
   return log.status;
 }
 
+/**
+ * Determines which class period a log entry belongs to based on its scan time.
+ * Allows a 10-minute early buffer before each period's start time.
+ * Returns null if the scan time doesn't fall within any known period.
+ * @ai-generated
+ * @param {object} log - The log entry to evaluate.
+ * @param {string|number} log.id - The log ID (used for debug logging).
+ * @param {string} log.time_scanned - The timestamp of the scan in "HH:MM" or "YYYY-MM-DD HH:MM:SS" format.
+ * @param {object[]} periods - Array of period objects with title, startTime, and endTime fields.
+ * @returns {string|null} The matched period title (e.g. "Period 1"), or null if no match found.
+ */
 function assignPeriodForLog(log, periods) {
   //console.log(log.id, 'scanned at', log.time_scanned, 'checking against periods:', periods.map(p => `${p.title} (${p.startTime}-${p.endTime})`));
   if (!log.time_scanned) {
@@ -712,6 +978,13 @@ function assignPeriodForLog(log, periods) {
   return null;
 }
 
+/**
+ * Batch job that queries all logs missing a status and assigns 'on-time' or 'Late'
+ * based on each log's scan time relative to its period's start time.
+ * Groups logs by date to minimize calendar API calls.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function assignStatusesToLogs() {
   try {
     const result = await pool.query(`
@@ -747,6 +1020,12 @@ async function assignStatusesToLogs() {
   }
 }
 
+/**
+ * Batch job that queries all logs missing a period assignment and assigns the correct
+ * period based on each log's scan time. Groups logs by date to minimize calendar API calls.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function assignPeriodsToLogs() {
   try {
     const result = await pool.query("SELECT * FROM logs WHERE period IS NULL OR period = '' OR period = 'na'");
@@ -776,6 +1055,13 @@ async function assignPeriodsToLogs() {
   }
 }
 
+/**
+ * Converts a 12-hour time string (e.g. "08:30:00 AM") to 24-hour format (e.g. "08:30:00").
+ * Returns the original string unchanged if it doesn't match the expected 12-hour pattern.
+ * @ai-generated
+ * @param {string} time12h - A time string in "HH:MM:SS AM/PM" format.
+ * @returns {string|null} A 24-hour time string, or null if the input is falsy.
+ */
 function convertTo24HourFormat(time12h) {
   if (!time12h) return null;
   const time = time12h.trim();
@@ -796,6 +1082,13 @@ function convertTo24HourFormat(time12h) {
   return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
 }
 
+/**
+ * Converts an array of log objects into a CSV-formatted string.
+ * Includes a header row and normalizes all time values before output.
+ * @ai-generated
+ * @param {object[]} logs - Array of log objects to serialize.
+ * @returns {string} A CSV string with headers and one row per log entry.
+ */
 function convertToCsv(logs) {
   const header = [
     'ID',
@@ -827,12 +1120,28 @@ function convertToCsv(logs) {
   return csvContent;
 }
 
+/**
+ * Escapes a single value for safe inclusion in a CSV file.
+ * Wraps values in double quotes if they contain commas, quotes, or newline characters.
+ * @ai-generated
+ * @param {*} value - The raw value to escape.
+ * @returns {string} A CSV-safe string representation of the value.
+ */
 function escapeCsvValue(value) {
   const normalized = value === undefined || value === null ? '' : String(value);
   if (!/[",\n\r]/.test(normalized)) return normalized;
   return `"${normalized.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Validates and returns a required string field from a raw input value.
+ * Throws a descriptive error if the value is missing or blank after trimming.
+ * @ai-generated
+ * @param {*} value - The raw input value to validate.
+ * @param {string} fieldLabel - Human-readable name of the field, used in the error message.
+ * @returns {string} The trimmed, non-empty string value.
+ * @throws {Error} If the value is blank or missing.
+ */
 function normalizeRequiredString(value, fieldLabel) {
   const normalized = String(value ?? '').trim();
   if (!normalized) {
@@ -841,6 +1150,13 @@ function normalizeRequiredString(value, fieldLabel) {
   return normalized;
 }
 
+/**
+ * Parses a course assignment value into an array of positive integer course IDs.
+ * Accepts arrays or delimited strings (pipe, semicolon, or comma separated).
+ * @ai-generated
+ * @param {string|number[]|string[]|null} courses - Raw course input to parse.
+ * @returns {number[]} Array of valid positive integer course IDs.
+ */
 function parseCourseAssignments(courses) {
   if (courses === undefined || courses === null || courses === '') return [];
   if (Array.isArray(courses)) {
@@ -854,6 +1170,13 @@ function parseCourseAssignments(courses) {
     .filter(course => Number.isInteger(course) && course > 0);
 }
 
+/**
+ * Parses and validates a set of course IDs against the database,
+ * returning only those that actually exist. Deduplicates the input list.
+ * @ai-generated
+ * @param {string|number[]|string[]|null} courses - Raw course assignment input.
+ * @returns {Promise<number[]>} Array of verified course IDs that exist in the database.
+ */
 async function sanitizeCourseAssignments(courses) {
   const parsedCourseIds = [...new Set(parseCourseAssignments(courses))];
   if (!parsedCourseIds.length) {
@@ -874,6 +1197,18 @@ async function sanitizeCourseAssignments(courses) {
   return parsedCourseIds.filter(id => validCourseIds.has(id));
 }
 
+/**
+ * Creates a new student account in the database with a hashed password.
+ * @ai-generated
+ * @param {object} payload - The student account data.
+ * @param {string} payload.student_id - The student's ID number.
+ * @param {string} payload.first_name - The student's first name.
+ * @param {string} payload.last_name - The student's last name.
+ * @param {string} payload.password - The plain-text password to hash and store.
+ * @param {string} [payload.uuid] - Optional device UUID to bind the account to.
+ * @returns {Promise<object>} The newly created student record (id, student_id, first_name, last_name).
+ * @throws {Error} If any required field is missing.
+ */
 async function createStudentAccount(payload) {
   let { student_id, first_name, last_name, password, uuid } = payload;
   student_id = normalizeRequiredString(student_id, 'Student ID');
@@ -892,6 +1227,18 @@ async function createStudentAccount(payload) {
   return result.rows[0];
 }
 
+/**
+ * Creates a new scanner account in the database with a hashed password.
+ * Accepts either scanner_password or password as the credential field.
+ * @ai-generated
+ * @param {object} payload - The scanner account data.
+ * @param {string} payload.scanner_id - The scanner's unique identifier.
+ * @param {string} payload.scanner_location - The physical room/location of the scanner.
+ * @param {string} [payload.scanner_password] - The scanner's plain-text password.
+ * @param {string} [payload.password] - Alias for scanner_password.
+ * @returns {Promise<object>} The newly created scanner record (id, scanner_id, scanner_location).
+ * @throws {Error} If any required field is missing.
+ */
 async function createScannerAccount(payload) {
   let { scanner_id, scanner_location, scanner_password, password } = payload;
   scanner_id = normalizeRequiredString(scanner_id, 'Scanner ID');
@@ -908,6 +1255,21 @@ async function createScannerAccount(payload) {
   return result.rows[0];
 }
 
+/**
+ * Creates a new web user account (teacher or administrator) in the database.
+ * For teacher accounts, validates and sanitizes course assignments against the database.
+ * Administrators are created without course assignments.
+ * @ai-generated
+ * @param {object} payload - The user account data.
+ * @param {string} payload.email - The user's email address (stored lowercase).
+ * @param {string} payload.first_name - The user's first name.
+ * @param {string} payload.last_name - The user's last name.
+ * @param {string} payload.password - The plain-text password to hash and store.
+ * @param {string} payload.role - The user's role; must be 'teacher' or 'administrator'.
+ * @param {string|number[]} [payload.courses] - Course IDs to assign (teachers only).
+ * @returns {Promise<object>} The newly created user record.
+ * @throws {Error} If any required field is missing or the role is invalid.
+ */
 async function createWebUserAccount(payload) {
   let { email, first_name, last_name, password, role, courses } = payload;
   email = normalizeRequiredString(email, 'Email').toLowerCase();
@@ -930,6 +1292,18 @@ async function createWebUserAccount(payload) {
   return result.rows[0];
 }
 
+/**
+ * Normalizes and validates all fields on a raw log payload, auto-filling student name
+ * from the students table or prior logs if missing, and computing the period from the
+ * scan time if not already provided.
+ * @ai-generated
+ * @param {object} rawLog - The raw log data from the request or CSV import.
+ * @param {object} [options={}] - Validation options.
+ * @param {boolean} [options.requireStudentId=true] - Whether to throw if student_id is missing.
+ * @param {boolean} [options.requireScannerFields=true] - Whether to throw if scanner_location or scanner_id is missing.
+ * @returns {Promise<object>} A fully normalized log object ready for database insertion.
+ * @throws {Error} If required fields are missing based on the options provided.
+ */
 async function buildPreparedLogEntry(rawLog, options = {}) {
   const {
     requireStudentId = true,
@@ -1016,6 +1390,13 @@ async function buildPreparedLogEntry(rawLog, options = {}) {
   };
 }
 
+/**
+ * Inserts a fully prepared log entry object into the logs table.
+ * Expects the input to already be normalized via buildPreparedLogEntry.
+ * @ai-generated
+ * @param {object} preparedLog - A normalized log object with all required fields.
+ * @returns {Promise<void>}
+ */
 async function insertPreparedLogEntry(preparedLog) {
   await pool.query(`
     INSERT INTO logs (
@@ -1045,6 +1426,15 @@ async function insertPreparedLogEntry(preparedLog) {
 
 
 /*-------------------------------------- Encryption Functions --------------------------------------*/
+
+/**
+ * Derives a 32-byte AES encryption key for a given date using HMAC-SHA256
+ * keyed by the application's MASTER_KEY environment variable.
+ * Defaults to the current Los Angeles date if no date is provided.
+ * @ai-generated
+ * @param {string|null} [dateString=null] - The date to derive the key for (YYYY-MM-DD).
+ * @returns {Buffer} A 32-byte derived key for use with AES-256-GCM.
+ */
 function getDailyKey(dateString = null) {
   const date = dateString || getLosAngelesDateString();
   return crypto
@@ -1053,6 +1443,15 @@ function getDailyKey(dateString = null) {
     .digest()
     .subarray(0, 32);
 }
+
+/**
+ * Encrypts a plain-text string using AES-256-GCM with a daily rotating key.
+ * Generates a random 12-byte IV for each encryption operation.
+ * @ai-generated
+ * @param {string} text - The plain-text string to encrypt (e.g. a student ID).
+ * @returns {{ encryptedData: string, iv: string, authTag: string, date: string }}
+ *   An object containing the hex-encoded ciphertext, IV, GCM auth tag, and the date used for key derivation.
+ */
 function encrypt(text) {
   const key = getDailyKey();
   const iv = crypto.randomBytes(12);
@@ -1068,6 +1467,17 @@ function encrypt(text) {
   };
 }
 
+/**
+ * Decrypts a ciphertext string previously encrypted with the encrypt() function.
+ * Derives the daily key using the original encryption date to ensure key alignment.
+ * @ai-generated
+ * @param {string} encryptedData - Hex-encoded ciphertext.
+ * @param {string} ivHex - Hex-encoded initialization vector used during encryption.
+ * @param {string} authTagHex - Hex-encoded GCM authentication tag.
+ * @param {string} date - The YYYY-MM-DD date used to derive the original encryption key.
+ * @returns {string} The decrypted plain-text string.
+ * @throws {Error} If the auth tag is invalid or the data has been tampered with.
+ */
 function decrypt(encryptedData, ivHex, authTagHex, date) {
   const key = getDailyKey(date);
   const decipher = crypto.createDecipheriv(
@@ -1083,6 +1493,15 @@ function decrypt(encryptedData, ivHex, authTagHex, date) {
 
 
 /*---------------------------------------- App Authentication ----------------------------------------------*/
+
+/**
+ * POST /api/students
+ * Creates a single new student account.
+ * @ai-generated
+ * @access Administrator only
+ * @body {object} Student fields: student_id, first_name, last_name, password, uuid (optional)
+ * @returns {201} The newly created student record.
+ */
 app.post('/api/students', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const createdStudent = await createStudentAccount(req.body);
@@ -1094,6 +1513,14 @@ app.post('/api/students', verifyToken, requireRole('administrator'), async (req,
   }
 });
 
+/**
+ * POST /api/students/bulk
+ * Creates multiple student accounts from an array of student objects.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ students: object[] }} Array of student payloads to insert.
+ * @returns {201} Success message with the number of students inserted.
+ */
 app.post('/api/students/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
   const rows = Array.isArray(req.body?.students) ? req.body.students : [];
   if (!rows.length) {
@@ -1111,6 +1538,13 @@ app.post('/api/students/bulk', verifyToken, requireRole('administrator'), async 
   }
 });
 
+/**
+ * GET /api/students
+ * Retrieves all student accounts, ordered by student_id ascending.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} Array of student records (id, student_id, first_name, last_name, created_at).
+ */
 app.get('/api/students', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, student_id, first_name, last_name, created_at FROM students ORDER BY student_id ASC');
@@ -1121,6 +1555,14 @@ app.get('/api/students', verifyToken, requireRole('administrator'), async (req, 
   }
 });
 
+/**
+ * GET /api/students/search
+ * Searches students by student_id, first_name, or last_name using a partial match.
+ * @ai-generated
+ * @access Authenticated users
+ * @query {string} q - The search term to match against student fields.
+ * @returns {200} Array of up to 25 matching student records.
+ */
 app.get('/api/students/search', verifyToken, async (req, res) => {
   const query = String(req.query.q || '').trim();
   if (!query) {
@@ -1143,6 +1585,14 @@ app.get('/api/students/search', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/students/:id
+ * Retrieves a single student by their database ID.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the student.
+ * @returns {200} The student record, or 404 if not found.
+ */
 app.get('/api/students/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, student_id, first_name, last_name, created_at FROM students WHERE id = $1', [req.params.id]);
@@ -1156,6 +1606,16 @@ app.get('/api/students/:id', verifyToken, requireRole('administrator'), async (r
   }
 });
 
+/**
+ * PUT /api/students/:id
+ * Updates one or more fields on an existing student account. All fields are optional.
+ * Passwords are automatically hashed before storage.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the student to update.
+ * @body {object} Any of: student_id, first_name, last_name, password.
+ * @returns {200} The updated student record, or 404 if not found.
+ */
 app.put('/api/students/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { student_id, first_name, last_name, password } = req.body;
   try {
@@ -1199,6 +1659,14 @@ app.put('/api/students/:id', verifyToken, requireRole('administrator'), async (r
   }
 });
 
+/**
+ * DELETE /api/students/:id
+ * Permanently deletes a student account from the database.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the student to delete.
+ * @returns {200} Success message, or 404 if the student was not found.
+ */
 app.delete('/api/students/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM students WHERE id = $1 RETURNING id', [req.params.id]);
@@ -1212,6 +1680,16 @@ app.delete('/api/students/:id', verifyToken, requireRole('administrator'), async
   }
 });
 
+/**
+ * POST /api/app/auth/login
+ * Authenticates a student using their student_id and password.
+ * On first login, binds the account to the device's UUID.
+ * Subsequent logins from a different UUID are rejected.
+ * @ai-generated
+ * @access Public
+ * @body {{ student_id: string, password: string, uuid: string }}
+ * @returns {200} JWT token and basic user info on success.
+ */
 app.post('/api/app/auth/login', async (req, res) => {
   const { student_id, password, uuid } = req.body;
   if (!student_id || !password) {
@@ -1280,6 +1758,15 @@ app.post('/api/app/auth/login', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/app/encrypt_student_id
+ * Encrypts a student ID using the current daily AES-256-GCM key.
+ * Used by the mobile app to generate a secure QR code payload for scanning.
+ * @ai-generated
+ * @access Authenticated students
+ * @body {{ student_id: string }}
+ * @returns {200} Encrypted payload object: { encryptedData, iv, authTag, date }.
+ */
 app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
   const { student_id } = req.body;
   if (!student_id) {
@@ -1294,6 +1781,15 @@ app.post('/api/app/encrypt_student_id', verifyToken, (req, res) => {
   }
 });
 
+/**
+ * POST /api/scanner/decrypt
+ * Decrypts an encrypted student ID payload that was generated by the mobile app.
+ * Used by the scanner to recover the student ID from a scanned QR code.
+ * @ai-generated
+ * @access Authenticated (scanner)
+ * @body {{ encryptedData: string, iv: string, authTag: string, date: string }}
+ * @returns {200} The decrypted student ID: { student_id }.
+ */
 app.post('/api/scanner/decrypt', verifyToken, (req, res) => {
   const { encryptedData, iv, authTag, date } = req.body;
   try {
@@ -1304,6 +1800,14 @@ app.post('/api/scanner/decrypt', verifyToken, (req, res) => {
   }
 });
 
+/**
+ * POST /api/app/students/:id/reset_uuid
+ * Clears the bound device UUID for a student, allowing them to log in from a new device.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the student.
+ * @returns {200} Success message, or 404 if the student was not found.
+ */
 app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administrator'), async (req, res) => {
   const { id } = req.params;
   try {
@@ -1320,6 +1824,15 @@ app.post('/api/app/students/:id/reset_uuid', verifyToken, requireRole('administr
 
 
 /*---------------------------------------- Scanner Authentication ----------------------------------------------*/
+
+/**
+ * POST /api/scanners
+ * Creates a single new scanner account.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ SCANNER_ID: string, SCANNER_LOCATION: string, SCANNER_PASSWORD: string }}
+ * @returns {201} The newly created scanner record.
+ */
 app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const createdScanner = await createScannerAccount({
@@ -1335,6 +1848,14 @@ app.post('/api/scanners', verifyToken, requireRole('administrator'), async (req,
   }
 });
 
+/**
+ * POST /api/scanners/bulk
+ * Creates multiple scanner accounts from an array of scanner objects.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ scanners: object[] }} Array of scanner payloads to insert.
+ * @returns {201} Success message with the number of scanners inserted.
+ */
 app.post('/api/scanners/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
   const rows = Array.isArray(req.body?.scanners) ? req.body.scanners : [];
   if (!rows.length) {
@@ -1352,6 +1873,13 @@ app.post('/api/scanners/bulk', verifyToken, requireRole('administrator'), async 
   }
 });
 
+/**
+ * GET /api/scanners
+ * Retrieves all scanner accounts with their current status and battery level.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} Array of scanner records (id, scanner_id, scanner_location, scanner_status, last_sync, battery_level).
+ */
 app.get('/api/scanners', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, scanner_id, scanner_location, scanner_status, last_sync, battery_level FROM scanners ORDER BY scanner_id ASC');
@@ -1362,6 +1890,14 @@ app.get('/api/scanners', verifyToken, requireRole('administrator'), async (req, 
   }
 });
 
+/**
+ * GET /api/scanners/:id
+ * Retrieves a single scanner by its database ID.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the scanner.
+ * @returns {200} The scanner record, or 404 if not found.
+ */
 app.get('/api/scanners/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, scanner_id, scanner_location, scanner_status, last_sync, battery_level FROM scanners WHERE id = $1', [req.params.id]);
@@ -1375,6 +1911,15 @@ app.get('/api/scanners/:id', verifyToken, requireRole('administrator'), async (r
   }
 });
 
+/**
+ * PUT /api/scanners/:id
+ * Updates one or more fields on an existing scanner account. All fields are optional.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the scanner to update.
+ * @body {object} Any of: scanner_id, scanner_location, scanner_password.
+ * @returns {200} The updated scanner record, or 404 if not found.
+ */
 app.put('/api/scanners/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { scanner_id, scanner_location, scanner_password } = req.body;
   try {
@@ -1411,6 +1956,14 @@ app.put('/api/scanners/:id', verifyToken, requireRole('administrator'), async (r
   }
 });
 
+/**
+ * DELETE /api/scanners/:id
+ * Permanently deletes a scanner account from the database.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the scanner to delete.
+ * @returns {200} Success message, or 404 if the scanner was not found.
+ */
 app.delete('/api/scanners/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM scanners WHERE id = $1 RETURNING id', [req.params.id]);
@@ -1424,6 +1977,15 @@ app.delete('/api/scanners/:id', verifyToken, requireRole('administrator'), async
   }
 });
 
+/**
+ * POST /api/scanner/auth/login
+ * Authenticates a scanner device using its scanner_id and password.
+ * Returns a JWT token with the scanner role for subsequent authenticated requests.
+ * @ai-generated
+ * @access Public
+ * @body {{ SCANNER_ID: string, SCANNER_LOCATION: string, SCANNER_PASSWORD: string }}
+ * @returns {200} JWT token and scanner info on success.
+ */
 app.post('/api/scanner/auth/login', async (req, res) => {
   const {SCANNER_ID, SCANNER_LOCATION, SCANNER_PASSWORD} = req.body;
   try {
@@ -1472,6 +2034,14 @@ app.post('/api/scanner/auth/login', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/scanner/key_me
+ * Returns the current daily AES key derived from the master key and today's date.
+ * Used by scanner devices that need to perform local decryption.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} The current daily key as a Buffer: { key }.
+ */
 app.get('/api/scanner/key_me', verifyToken, async (req, res) => {
   try {
     const result = getDailyKey();
@@ -1486,6 +2056,13 @@ app.get('/api/scanner/key_me', verifyToken, async (req, res) => {
 
 const scannerTerminalSessions = {};
 
+/**
+ * Returns the in-memory terminal session object for a given scanner ID.
+ * Creates a new default session if one doesn't already exist.
+ * @ai-generated
+ * @param {string} scannerId - The scanner's database ID.
+ * @returns {object} The session object tracking mode, command queue, output history, etc.
+ */
 function getScannerSession(scannerId) {
   if (!scannerTerminalSessions[scannerId]) {
     scannerTerminalSessions[scannerId] = {
@@ -1502,12 +2079,26 @@ function getScannerSession(scannerId) {
   return scannerTerminalSessions[scannerId];
 }
 
+/**
+ * Normalizes a raw mode string to either 'enroll' or 'scanner'.
+ * @ai-generated
+ * @param {string} mode - Raw mode string from a scanner message or command.
+ * @returns {'enroll'|'scanner'} The normalized mode value.
+ */
 function normalizeScannerMode(mode) {
   const value = String(mode || '').trim().toLowerCase();
   if (value === 'enroll' || value === 'enrollment') return 'enroll';
   return 'scanner';
 }
 
+/**
+ * Determines the new scanner mode based on a terminal command string.
+ * Returns the current mode unchanged if the command doesn't trigger a mode switch.
+ * @ai-generated
+ * @param {string} command - The terminal command sent to the scanner.
+ * @param {string} currentMode - The scanner's current mode ('scanner' or 'enroll').
+ * @returns {'enroll'|'scanner'} The resulting mode after processing the command.
+ */
 function modeFromTerminalCommand(command, currentMode) {
   const value = String(command || '').trim().toLowerCase();
   if (value === 'enroll' || value === 'mode enroll' || value === 'enter enroll') {
@@ -1519,6 +2110,16 @@ function modeFromTerminalCommand(command, currentMode) {
   return currentMode;
 }
 
+/**
+ * POST /api/scanners/:id/terminal
+ * Sends a command to a specific scanner via WebSocket or queues it if the scanner is offline.
+ * Optimistically updates the server-side session mode for mode-switching commands.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The scanner's database ID.
+ * @body {{ command: string }} The command string to send.
+ * @returns {200} Confirmation with command ID and current session mode.
+ */
 app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator'), async (req, res) => {
   const scannerId = req.params.id;
   const { command } = req.body;
@@ -1562,6 +2163,16 @@ app.post('/api/scanners/:id/terminal', verifyToken, requireRole('administrator')
   });
 });
 
+/**
+ * GET /api/scanners/:id/terminal
+ * Polled by the scanner device to receive the next queued command.
+ * Updates the scanner's last-seen timestamp on each poll.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} id - The scanner's database ID.
+ * @returns {200} The next queued command (or null), along with the current session mode and command ID.
+ * Had help from CHATGPT to figure out the polling mechanism and command queue management for offline scanners.
+ */
 app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
@@ -1583,6 +2194,16 @@ app.get('/api/scanners/:id/terminal', verifyToken, (req, res) => {
   }
 });
 
+/**
+ * POST /api/scanners/:id/heartbeat
+ * Called by scanner devices on a regular interval to report they are online.
+ * Updates the scanner's last_sync timestamp and optionally its battery level.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} id - The scanner's database ID.
+ * @body {{ battery_level?: number }} Optional battery level (0–100).
+ * @returns {200} Success message.
+ */
 app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
   const { id } = req.params;
   const { battery_level } = req.body;
@@ -1603,6 +2224,16 @@ app.post('/api/scanners/:id/heartbeat', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/scanners/:id/terminal/output
+ * Receives terminal output from a scanner device and stores it in the session history.
+ * Also updates the scanner's mode and last-seen timestamp.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} id - The scanner's database ID.
+ * @body {{ output: string, mode: string, commandId?: number }}
+ * @returns {200} Confirmation with the current session mode.
+ */
 app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   const scannerId = req.params.id;
   const { output, mode, commandId } = req.body;
@@ -1630,6 +2261,16 @@ app.post('/api/scanners/:id/terminal/output', verifyToken, async (req, res) => {
   res.json({ message: 'Output received', mode: session.mode });
 });
 
+/**
+ * GET /api/scanners/:id/terminal/output
+ * Polls for new terminal output from a scanner since a given version number.
+ * Returns the latest output, version info, current mode, and the scanner's last-seen timestamp.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The scanner's database ID.
+ * @query {number} [afterVersion=0] - Only return output entries with a version greater than this.
+ * @returns {200} Output history entries, latest output string, current mode, and timestamps.
+ */
 app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administrator'), (req, res) => {
   const scannerId = req.params.id;
   const session = getScannerSession(scannerId);
@@ -1649,6 +2290,16 @@ app.get('/api/scanners/:id/terminal/output', verifyToken, requireRole('administr
 /*---------------------------------------API Endpoints---------------------------------------*/
 
 /*-------Authentication Endpoints-------*/
+
+/**
+ * POST /api/auth/login
+ * Authenticates a web user (teacher or administrator) by email and password.
+ * Subject to rate limiting (10 attempts per 15 minutes per email+IP).
+ * @ai-generated
+ * @access Public
+ * @body {{ email: string, password: string }}
+ * @returns {200} JWT token and user info (id, email, role, name, courses) on success.
+ */
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -1705,6 +2356,13 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/logout
+ * Destroys the current user session, effectively logging out the web user.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Success message on logout.
+ */
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
@@ -1714,6 +2372,13 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
+/**
+ * GET /api/auth/me
+ * Returns the current authenticated user's profile, fetched fresh from the database.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} User record (id, email, first_name, last_name, role, created_at, courses).
+ */
 app.get('/api/auth/me', verifyToken, async (req, res) => {
   try {
     const result = await pool.query(
@@ -1733,6 +2398,15 @@ app.get('/api/auth/me', verifyToken, async (req, res) => {
 
 
 /*-------User Management Endpoints-------*/
+
+/**
+ * POST /api/users
+ * Creates a single new web user account (teacher or administrator).
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ email, first_name, last_name, password, role, courses? }}
+ * @returns {201} The newly created user record.
+ */
 app.post('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const createdUser = await createWebUserAccount(req.body);
@@ -1746,6 +2420,14 @@ app.post('/api/users', verifyToken, requireRole('administrator'), async (req, re
   }
 });
 
+/**
+ * POST /api/users/bulk
+ * Creates multiple web user accounts from an array of user objects.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ users: object[] }} Array of user payloads to insert.
+ * @returns {201} Success message with the number of users inserted.
+ */
 app.post('/api/users/bulk', verifyToken, requireRole('administrator'), async (req, res) => {
   const rows = Array.isArray(req.body?.users) ? req.body.users : [];
   if (!rows.length) {
@@ -1766,6 +2448,13 @@ app.post('/api/users/bulk', verifyToken, requireRole('administrator'), async (re
   }
 });
 
+/**
+ * GET /api/users
+ * Retrieves all web user accounts, ordered by email ascending.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} Array of user records (id, email, first_name, last_name, role, created_at, courses).
+ */
 app.get('/api/users', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at, courses FROM users ORDER BY email ASC');
@@ -1776,6 +2465,14 @@ app.get('/api/users', verifyToken, requireRole('administrator'), async (req, res
   }
 });
 
+/**
+ * GET /api/users/:id
+ * Retrieves a single web user by their database ID.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the user.
+ * @returns {200} The user record, or 404 if not found.
+ */
 app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, email, first_name, last_name, role, created_at, courses FROM users WHERE id = $1', [req.params.id]);
@@ -1789,6 +2486,16 @@ app.get('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
   }
 });
 
+/**
+ * PUT /api/users/:id
+ * Updates one or more fields on an existing web user account. All fields are optional.
+ * For teachers, re-validates course assignments when courses or role are changed.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the user to update.
+ * @body {object} Any of: email, first_name, last_name, password, role, courses.
+ * @returns {200} The updated user record, or 404 if not found.
+ */
 app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { email, first_name, last_name, password, role, courses } = req.body;
   try {
@@ -1856,6 +2563,14 @@ app.put('/api/users/:id', verifyToken, requireRole('administrator'), async (req,
   }
 });
 
+/**
+ * DELETE /api/users/:id
+ * Permanently deletes a web user account from the database.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the user to delete.
+ * @returns {200} Success message, or 404 if the user was not found.
+ */
 app.delete('/api/users/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [req.params.id]);
@@ -1872,6 +2587,16 @@ app.delete('/api/users/:id', verifyToken, requireRole('administrator'), async (r
 
 
 /*---------------------------- Current Class Map Endpoints ----------------------------*/
+
+/**
+ * POST /api/map-layout
+ * Saves or replaces the campus map layout (rooms and scanner positions).
+ * Uses an upsert so there is always exactly one map layout stored (id=1).
+ * @ai-generated
+ * @access Authenticated
+ * @body {object} The full map layout object (rooms, scanners, etc.).
+ * @returns {200} Success message.
+ */
 app.post('/api/map-layout', verifyToken, async (req, res) => {
   try {
     const mapData = req.body;
@@ -1886,7 +2611,15 @@ app.post('/api/map-layout', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to save map' });
   }
 });
- 
+
+/**
+ * GET /api/map-layout
+ * Retrieves the saved campus map layout.
+ * Returns an empty layout if no map has been saved yet.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} The map layout object, or { rooms: [], scanners: [] } if none exists.
+ */
 app.get('/api/map-layout', verifyToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -1904,6 +2637,15 @@ app.get('/api/map-layout', verifyToken, async (req, res) => {
 
 
 /*-------Courses Endpoints-------*/
+
+/**
+ * POST /api/courses
+ * Creates a new course with a room and period. Room+period combinations must be unique.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ room: string, period: string }}
+ * @returns {201} The newly created course (id, room, period).
+ */
 app.post('/api/courses', verifyToken, requireRole('administrator'), async (req, res) => {
   const { room, period } = req.body;
   if (!room || !period) {
@@ -1925,6 +2667,14 @@ app.post('/api/courses', verifyToken, requireRole('administrator'), async (req, 
   }
 });
 
+/**
+ * GET /api/courses
+ * Returns the list of courses visible to the authenticated user.
+ * Administrators see all courses; teachers see only their assigned courses.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Array of course objects (id, room, period).
+ */
 app.get('/api/courses', verifyToken, async (req, res) => {
   try {
     const courses = await getVisibleCoursesForUser(req.user);
@@ -1935,6 +2685,14 @@ app.get('/api/courses', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/courses/:id
+ * Deletes a course and removes it from all teacher course assignments.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the course to delete.
+ * @returns {200} Success message, or 404 if the course was not found.
+ */
 app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM courses WHERE id = $1 RETURNING id', [req.params.id]);
@@ -1950,6 +2708,15 @@ app.delete('/api/courses/:id', verifyToken, requireRole('administrator'), async 
 });
 
 /*-------Calendar Endpoints-------*/
+
+/**
+ * GET /api/calendar/today
+ * Returns today's class periods, using the calendar cache when available.
+ * Falls back to hardcoded default periods if the API or cache is unavailable.
+ * @ai-generated
+ * @access Public
+ * @returns {200} Object containing { events, lastUpdated, date }.
+ */
 app.get('/api/calendar/today', async (req, res) => {
   try {
     const today = getLosAngelesDateString();
@@ -1969,6 +2736,15 @@ app.get('/api/calendar/today', async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/courses/:id
+ * Updates the room and/or period of an existing course.
+ * @ai-generated
+ * @access Administrator only
+ * @param {string} id - The database ID of the course to update.
+ * @body {{ room: string, period: string }}
+ * @returns {200} The updated course record, or 404 if not found.
+ */
 app.put('/api/courses/:id', verifyToken, requireRole('administrator'), async (req, res) => {
   const { room, period } = req.body;
   if (!room || !period) {
@@ -2000,6 +2776,14 @@ app.put('/api/courses/:id', verifyToken, requireRole('administrator'), async (re
 
 
 /*-------Log Endpoints-------*/
+
+/**
+ * GET /api/logs
+ * Returns all attendance logs visible to the authenticated user, sorted newest-first.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Array of log objects.
+ */
 app.get('/api/logs', verifyToken, async (req, res) => {
   try {
     const logs = await getVisibleLogsForUser(req.user);
@@ -2010,6 +2794,13 @@ app.get('/api/logs', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/logs/csv
+ * Exports all visible logs as a downloadable CSV file.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} CSV file attachment (Content-Disposition: attachment; filename=logs.csv).
+ */
 app.get('/api/logs/csv', verifyToken, async (req, res) => {
   try {
     const logs = await getVisibleLogsForUser(req.user);
@@ -2023,6 +2814,16 @@ app.get('/api/logs/csv', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/logs
+ * Creates a single new attendance log entry.
+ * Applies teacher scope restrictions, normalizes the payload, and triggers
+ * period and status auto-assignment after insertion.
+ * @ai-generated
+ * @access Authenticated
+ * @body {object} Log fields: student_id, scanner_location, scanner_id, time_scanned, date_scanned, etc.
+ * @returns {201} Success message on creation.
+ */
 app.post('/api/logs', verifyToken, async (req, res) => {
   try {
     const scopedPayload = await applyTeacherLogScope(req.body, req.user);
@@ -2037,6 +2838,15 @@ app.post('/api/logs', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/logs/bulk
+ * Imports multiple attendance log entries from an array (typically from a CSV upload).
+ * Applies teacher scope restrictions per entry and triggers period/status assignment after all inserts.
+ * @ai-generated
+ * @access Authenticated
+ * @body {{ logs: object[] }} Array of log payloads to insert.
+ * @returns {201} Success message with the number of logs inserted.
+ */
 app.post('/api/logs/bulk', verifyToken, async (req, res) => {
   const incomingLogs = Array.isArray(req.body?.logs) ? req.body.logs : [];
   if (!incomingLogs.length) {
@@ -2061,6 +2871,14 @@ app.post('/api/logs/bulk', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/logs/:id
+ * Deletes a single log entry. Teachers may only delete logs within their assigned courses.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} id - The database ID of the log entry to delete.
+ * @returns {200} Success message, or 403/404 if unauthorized or not found.
+ */
 app.delete('/api/logs/:id', verifyToken, async (req, res) => {
   const logId = req.params.id;
   try {
@@ -2073,6 +2891,13 @@ app.delete('/api/logs/:id', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/logs/clear
+ * Deletes all log entries from the database. This action is irreversible.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} Success message with the count of deleted rows.
+ */
 app.post('/api/admin/logs/clear', verifyToken, requireRole('administrator'), async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM logs');
@@ -2083,6 +2908,15 @@ app.post('/api/admin/logs/clear', verifyToken, requireRole('administrator'), asy
   }
 });
 
+/**
+ * POST /api/admin/reindex
+ * Runs REINDEX DATABASE on the configured PostgreSQL database to rebuild indexes.
+ * The database name is read from the DB_NAME environment variable and validated
+ * to prevent SQL injection before use in the query.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} Success message with the database name, or 500 if misconfigured.
+ */
 app.post('/api/admin/reindex', verifyToken, requireRole('administrator'), async (req, res) => {
   const databaseName = String(process.env.DB_NAME || '').trim();
   if (!databaseName || !/^[a-zA-Z0-9_]+$/.test(databaseName)) {
@@ -2098,6 +2932,13 @@ app.post('/api/admin/reindex', verifyToken, requireRole('administrator'), async 
   }
 });
 
+/**
+ * POST /api/logs/assign-periods
+ * Manually triggers the batch job that assigns periods to all logs currently missing one.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Success message on completion.
+ */
 app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
   try {
     await assignPeriodsToLogs();
@@ -2108,6 +2949,13 @@ app.post('/api/logs/assign-periods', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/logs/assign-statuses
+ * Manually triggers the batch job that assigns attendance statuses to all logs currently missing one.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Success message on completion.
+ */
 app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
   try {
     await assignStatusesToLogs();
@@ -2118,6 +2966,14 @@ app.post('/api/logs/assign-statuses', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/logs/analytics
+ * Returns aggregated attendance totals grouped by student, scanner location, and period.
+ * Results are scoped to the authenticated user's visible courses.
+ * @ai-generated
+ * @access Authenticated
+ * @returns {200} Array of aggregated records sorted alphabetically by student name and period.
+ */
 app.get('/api/logs/analytics', verifyToken, async (req, res) => {
   try {
     const visibleLogs = await getVisibleLogsForUser(req.user);
@@ -2159,6 +3015,14 @@ app.get('/api/logs/analytics', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/logs/:room
+ * Returns all visible logs filtered to a specific scanner room/location.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} room - The scanner_location value to filter by.
+ * @returns {200} Array of log objects for the specified room.
+ */
 app.get('/api/logs/:room', verifyToken, async (req, res) => {
   const { room } = req.params;
   try {
@@ -2170,6 +3034,15 @@ app.get('/api/logs/:room', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/logs/:room/:period
+ * Returns all visible logs filtered to a specific room and class period.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} room - The scanner_location value to filter by.
+ * @param {string} period - The period label to filter by (e.g. "Period 1").
+ * @returns {200} Array of log objects for the specified room and period.
+ */
 app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
   const { room, period } = req.params;
   try {
@@ -2186,6 +3059,16 @@ app.get('/api/logs/:room/:period', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/logs/:room/:period/:date
+ * Returns all visible logs filtered to a specific room, period, and date.
+ * @ai-generated
+ * @access Authenticated
+ * @param {string} room - The scanner_location value to filter by.
+ * @param {string} period - The period label to filter by (e.g. "Period 1").
+ * @param {string} date - The date_scanned value to filter by (YYYY-MM-DD).
+ * @returns {200} Array of log objects for the specified room, period, and date.
+ */
 app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
   const { room, period, date } = req.params;
   try {
@@ -2206,10 +3089,26 @@ app.get('/api/logs/:room/:period/:date', verifyToken, async (req, res) => {
 
 
 /*---------------------------------------- Settings Endpoints ----------------------------------------------*/
+
+/**
+ * GET /api/settings/grace-period
+ * Returns the current attendance grace period setting in minutes.
+ * @ai-generated
+ * @access Administrator only
+ * @returns {200} { value: number } — The current grace period in minutes.
+ */
 app.get('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
   res.json({ value: ATTENDANCE_GRACE_PERIOD_MINUTES });
 });
 
+/**
+ * PUT /api/settings/grace-period
+ * Updates the attendance grace period setting and persists it to disk.
+ * @ai-generated
+ * @access Administrator only
+ * @body {{ value: number }} The new grace period in minutes (must be >= 0).
+ * @returns {200} { success: true } on success.
+ */
 app.put('/api/settings/grace-period', verifyToken, requireRole('administrator'), (req, res) => {
   const { value } = req.body;
   if (isNaN(value) || value < 0) {
@@ -2277,6 +3176,13 @@ app.get('/admin', redirectIfNotAuthenticated, requireRole('administrator'), (req
 app.use(express.static(path.join(__dirname, "public")));
 
 /*----------------------------------------Start Server----------------------------------------*/
+
+/**
+ * Initializes the database, starts the periodic scanner offline-check interval,
+ * loads persisted settings, and begins listening on the configured PORT.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function startServer() {
   await initializeDatabase();
   setInterval(async () => {
