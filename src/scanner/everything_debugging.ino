@@ -17,8 +17,8 @@
 #define FINGERPRINT_LED_WHITE 0x07
 
 // ========== CONFIGURATION ==========
-const char ssid[] = "NETGEAR54TP-Link_003Ext";
-const char password[] = "PIN12205486";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
@@ -32,7 +32,7 @@ const uint16_t wsPort = 443;
 const char* wsPath = "/ws";
 
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 16 * 3600;
+const long gmtOffset_sec = -8 * 3600;
 const int daylightOffset_sec = 3600;
 
 const int batteryPin = 34;
@@ -44,6 +44,39 @@ int count = 0;
 
 float calibrationFactor = 4.138 / 5.605;
 const float VREF = 3.378;
+
+enum LedState {
+  LED_DISCONNECTED_WIFI,
+  LED_DISCONNECTED_WS,
+  LED_READY,
+  LED_ENROLL,
+  LED_SUCCESS,
+  LED_AUTH,
+  LED_OFFLINE
+};
+
+// ========== NON-BLOCKING LED MANAGEMENT ==========
+LedState modeBaseLedState = LED_READY;  // BLUE for scanner, CYAN for enroll
+LedState currentLedState = LED_DISCONNECTED_WIFI;
+unsigned long ledStatusCheckTime = 0;
+unsigned long ledModeReturnTime = 0;
+
+const unsigned long LED_ERROR_DURATION = 2000;     // 2 seconds solid error
+const unsigned long LED_NORMAL_DURATION = 10000;   // 10 seconds normal mode
+
+unsigned long ledOverrideUntil = 0;
+LedState ledOverrideState = LED_READY;
+bool ledOverrideActive = false;
+
+enum LedCyclePhase {
+  LED_PHASE_NORMAL,
+  LED_PHASE_ERROR
+};
+
+LedCyclePhase ledPhase = LED_PHASE_NORMAL;
+unsigned long ledPhaseStart = 0;
+
+bool websocketConnected = false;
 
 // ========== FINGERPRINT HARDWARE ==========
 #define RX_GPIO 16
@@ -76,6 +109,7 @@ bool buttonPressed = false;
 
 const unsigned long SHORT_PRESS_TIME = 50;     // debounce threshold
 const unsigned long LONG_PRESS_TIME  = 1500;   // 1.5 seconds
+
 // ========== GLOBALS ==========
 String authToken = "";
 String scannerDbId = "";
@@ -83,7 +117,11 @@ String mode = "scanner";  // scanner, enroll, nfc
 bool WifiConnected = false;
 bool fingerprintInitialized = false;
 bool nfcInitialized = false;
-uint8_t lastLedColor = FINGERPRINT_LED_RED;
+
+// ========== ENROLLMENT CONTROL ==========
+bool enrollmentActive = false;
+bool enrollmentCancelled = false;
+int enrollmentStudentID = 0;
 
 //log pending
 struct PendingLog {
@@ -103,6 +141,148 @@ const unsigned long NFC_CHECK_INTERVAL = 200; // ms
 
 int students[MAX_FINGERPRINT_SLOTS + 1] = {0};
 
+// ========== NON-BLOCKING LED FUNCTIONS ==========
+void setLedBreathing(LedState state) {
+  if (!fingerprintInitialized) return;
+
+  uint8_t color = FINGERPRINT_LED_RED;
+  
+  switch (state) {
+    case LED_DISCONNECTED_WIFI:
+      color = FINGERPRINT_LED_RED;
+      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, color);
+      break;
+    case LED_DISCONNECTED_WS:
+      color = FINGERPRINT_LED_WHITE;
+      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, color);
+      break;
+    case LED_READY:
+      color = FINGERPRINT_LED_BLUE;
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, color);
+      break;
+    case LED_ENROLL:
+      color = FINGERPRINT_LED_CYAN;
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 3000, color);
+      break;
+    case LED_SUCCESS:
+      color = FINGERPRINT_LED_GREEN;
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, color);
+      break;
+    case LED_AUTH:
+      color = FINGERPRINT_LED_YELLOW;
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1500, color);
+      break;
+    case LED_OFFLINE:
+      color = FINGERPRINT_LED_PURPLE;
+      finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 1500, color);
+      break;
+  }
+}
+
+void setLedSolidFlash(LedState state) {
+  if (!fingerprintInitialized) return;
+
+  uint8_t color = FINGERPRINT_LED_RED;
+  
+  switch (state) {
+    case LED_DISCONNECTED_WIFI:
+      color = FINGERPRINT_LED_RED;
+      break;
+    case LED_DISCONNECTED_WS:
+      color = FINGERPRINT_LED_WHITE;
+      break;
+    default:
+      color = FINGERPRINT_LED_RED;
+      break;
+  }
+
+  finger.LEDcontrol(FINGERPRINT_LED_ON, 0, color);
+}
+
+void setDesiredLedState(LedState state) {
+  // This is called from external code to set mode-based states
+  if (state == LED_READY || state == LED_ENROLL) {
+    modeBaseLedState = state;
+    currentLedState = state;
+    ledStatusCheckTime = millis();
+    ledModeReturnTime = millis() + LED_NORMAL_DURATION;
+    setLedBreathing(state);
+  }
+}
+
+void setLedTemporaryOverride(LedState state) {
+  // Temporary states: scan success, auth, offline
+  ledOverrideActive = true;
+  ledOverrideState = state;
+  ledOverrideUntil = millis() + LED_ERROR_DURATION;
+  setLedBreathing(state);
+}
+
+void updateLedStatus() {
+  if (!fingerprintInitialized) return;
+
+  // ---- Handle temporary override FIRST ----
+  if (ledOverrideActive) {
+    if (millis() > ledOverrideUntil) {
+      ledOverrideActive = false;
+      setLedBreathing(modeBaseLedState);
+      ledPhase = LED_PHASE_NORMAL;
+      ledPhaseStart = millis();
+    }
+    return;
+  }
+
+  // ---- Determine current connectivity issue ----
+  LedState errorState = LED_READY;
+
+  if (!WifiConnected) {
+    errorState = LED_DISCONNECTED_WIFI;
+  } else if (!websocketConnected) {
+    errorState = LED_DISCONNECTED_WS;
+  }
+
+  bool hasError = (errorState != LED_READY);
+
+  // ---- If NO error → always show normal mode ----
+  if (!hasError) {
+    if (currentLedState != modeBaseLedState) {
+      currentLedState = modeBaseLedState;
+      setLedBreathing(modeBaseLedState);
+    }
+    ledPhase = LED_PHASE_NORMAL;
+    ledPhaseStart = millis();
+    return;
+  }
+
+  // ---- Error cycling logic ----
+  unsigned long now = millis();
+
+  if (ledPhase == LED_PHASE_NORMAL) {
+    // Show normal mode
+    if (currentLedState != modeBaseLedState) {
+      currentLedState = modeBaseLedState;
+      setLedBreathing(modeBaseLedState);
+    }
+
+    if (now - ledPhaseStart >= LED_NORMAL_DURATION) {
+      ledPhase = LED_PHASE_ERROR;
+      ledPhaseStart = now;
+    }
+  }
+  else if (ledPhase == LED_PHASE_ERROR) {
+    // Show solid error color
+    if (currentLedState != errorState) {
+      currentLedState = errorState;
+      setLedSolidFlash(errorState);  // SOLID (not breathing)
+    }
+
+    if (now - ledPhaseStart >= LED_ERROR_DURATION) {
+      ledPhase = LED_PHASE_NORMAL;
+      ledPhaseStart = now;
+    }
+  }
+}
+
 // ========== FORWARD DECLARATIONS ==========
 void loadStudents();
 void saveStudents();
@@ -118,12 +298,11 @@ void connectWifi();
 void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length);
 void initializeFingerprint();
 void initializeNFC();
-void updateLedStatus();
 uint8_t getFingerprintEnroll(int slot, int sID);
 int scanFingerprint();
 int findStudent(int fingerprintID);
-void handleNFCCard();
-String readNFCASCII();
+void handleNFCCardNonBlocking();
+String readNFCNDEFText();
 void queueOfflineLog(int studentID, String method);
 void flushOfflineLogs();
 
@@ -136,23 +315,12 @@ void initializeFingerprint() {
   if (finger.verifyPassword()) {
     Serial.println("✓ Found fingerprint sensor!");
     fingerprintInitialized = true;
-    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_RED);
-    lastLedColor = FINGERPRINT_LED_RED;
+    setDesiredLedState(LED_DISCONNECTED_WIFI);
   } else {
     Serial.println("✗ Did not find fingerprint sensor :(");
     fingerprintInitialized = false;
   }
 }
-
-void updateLedStatus() {
-  if (!fingerprintInitialized) return;
-  uint8_t newColor = (WiFi.status() == WL_CONNECTED) ? FINGERPRINT_LED_BLUE : FINGERPRINT_LED_RED;
-  if (newColor != lastLedColor) {
-    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, newColor);
-    lastLedColor = newColor;
-  }
-}
-
 
 void handleButton() {
   bool currentState = digitalRead(BUTTON_PIN);
@@ -170,15 +338,21 @@ void handleButton() {
 
     // ---- SHORT PRESS ----
     if (pressDuration > SHORT_PRESS_TIME && pressDuration < LONG_PRESS_TIME) {
+      // ← NEW: Cancel enrollment if active
+      if (enrollmentActive) {
+        enrollmentCancelled = true;
+        sendOutput("Enrollment cancelled (button).", -1);
+        return;
+      }
+      
       if (mode == "scanner") {
         mode = "enroll";
         sendOutput("Mode set to enroll (button)", -1);
-        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_CYAN);
+        setDesiredLedState(LED_ENROLL);
       } else {
         mode = "scanner";
         sendOutput("Mode set to scanner (button)", -1);
-        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_BLUE);
-        updateLedStatus(); // restore normal LED logic
+        setDesiredLedState(LED_READY);
       }
     }
 
@@ -189,17 +363,12 @@ void handleButton() {
       if (signIn()) {
         flushOfflineLogs();
       }
-
-      // Optional: give visual feedback
-      for (int i = 0; i < 2; i++) {
-        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_YELLOW);
-        delay(1000);
-      }
     }
   }
 
   buttonLastState = currentState;
 }
+
 // ========== NFC ==========
 void initializeNFC() {
   Wire.begin(21, 22);
@@ -340,13 +509,27 @@ static inline void wsFlush() {
 
 uint8_t getFingerprintEnroll(int slot, int sID) {
   int p = -1;
+  enrollmentActive = true;
+  enrollmentCancelled = false;
+  enrollmentStudentID = sID;
 
   // ── Step 1: first scan ───────────────────────────────────────────────────
   sendOutput("Place finger on sensor for student " + String(sID) + "...", -1);
+  sendOutput("Type 'cancel' to abort enrollment.", -1);
   wsFlush();
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_BLUE);
 
   while (p != FINGERPRINT_OK) {
+    // ← FIX: Update LED state machine during blocking loop
+    webSocket.loop();
+    updateLedStatus();
+    
+    // Check for cancellation
+    if (enrollmentCancelled) {
+      enrollmentActive = false;
+      sendOutput("Enrollment cancelled.", -1);
+      return 0xFF;
+    }
+
     p = finger.getImage();
     webSocket.loop();
     if (p == FINGERPRINT_NOFINGER) { continue; }
@@ -357,25 +540,37 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   if (p != FINGERPRINT_OK) {
     sendOutput("First scan failed — try again.", -1);
     wsFlush();
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
+    enrollmentActive = false;
     return p;
   }
 
   // ── Step 2: lift finger ──────────────────────────────────────────────────
   sendOutput("Good scan. Lift your finger.", -1);
+  setLedTemporaryOverride(LED_SUCCESS);
   wsFlush();
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 4000, FINGERPRINT_LED_GREEN);
-  delay(2000);
-  while (finger.getImage() != FINGERPRINT_NOFINGER) { webSocket.loop(); }
+  delay(1000);
+  
+  while (finger.getImage() != FINGERPRINT_NOFINGER) {
+    updateLedStatus();  // ← FIX: Keep LED updating
+    webSocket.loop();
+  }
 
   // ── Step 3: second scan ──────────────────────────────────────────────────
   p = -1;
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 10000, FINGERPRINT_LED_BLUE);
   sendOutput("Place the SAME finger again to confirm...", -1);
   wsFlush();
 
   while (p != FINGERPRINT_OK) {
+    updateLedStatus();  // ← FIX: Keep LED updating
+    webSocket.loop();
+    
+    if (enrollmentCancelled) {
+      enrollmentActive = false;
+      sendOutput("Enrollment cancelled.", -1);
+      return 0xFF;
+    }
+
     p = finger.getImage();
     webSocket.loop();
     if (p == FINGERPRINT_NOFINGER) { continue; }
@@ -386,8 +581,8 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   if (p != FINGERPRINT_OK) {
     sendOutput("Second scan failed. Try again.", -1);
     wsFlush();
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
+    enrollmentActive = false;
     return p;
   }
 
@@ -396,15 +591,15 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   if (p == FINGERPRINT_ENROLLMISMATCH) {
     sendOutput("Fingerprints did not match — please retry.", -1);
     wsFlush();
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
+    enrollmentActive = false;
     return p;
   }
   if (p != FINGERPRINT_OK) {
     sendOutput("Model creation failed (error " + String(p) + ").", -1);
     wsFlush();
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
+    enrollmentActive = false;
     return p;
   }
 
@@ -412,18 +607,18 @@ uint8_t getFingerprintEnroll(int slot, int sID) {
   if (p != FINGERPRINT_OK) {
     sendOutput("Failed to store fingerprint (error " + String(p) + ").", -1);
     wsFlush();
-    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_RED);
     delay(3000);
+    enrollmentActive = false;
     return p;
   }
 
   students[slot] = sID;
   saveStudents();
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 47, FINGERPRINT_LED_GREEN);
-  sendOutput("Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
+  sendOutput("✓ Enrollment complete! Student " + String(sID) + " saved to slot " + String(slot) + ".", -1);
+  setLedTemporaryOverride(LED_SUCCESS);
   wsFlush();
-  delay(3000);
-  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
+  
+  enrollmentActive = false;
   return FINGERPRINT_OK;
 }
 
@@ -433,6 +628,7 @@ bool signIn() {
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(10000);
+  setDesiredLedState(LED_AUTH);
   String url = String(serverEndpoint) + "/api/scanner/auth/login";
   if (!http.begin(client, url)) { http.end(); return false; }
   http.addHeader("Content-Type", "application/json");
@@ -478,15 +674,7 @@ void sendLog(int studentID, String method) {
   if (WiFi.status() != WL_CONNECTED || authToken == "") {
     Serial.println("[LOG] Offline -- queuing log locally.");
     queueOfflineLog(studentID, method);
-    // Flash purple twice to show the scan was queued offline
-    for (int i = 0; i < 2; i++) {
-      finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_PURPLE);
-      delay(200);
-      finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, 0);
-      delay(150);
-    }
-    finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_RED);
-    lastLedColor = FINGERPRINT_LED_RED;
+    setLedTemporaryOverride(LED_OFFLINE);
     return;
   }
 
@@ -514,7 +702,7 @@ void sendLog(int studentID, String method) {
   doc["student_id"]       = studentID;
   doc["date_scanned"]     = dateStr;
   doc["time_scanned"]     = timeStr;
-  doc["status"]           = "present";
+  doc["status"]           = "null";
   doc["method"]           = method;
 
   String body;
@@ -524,6 +712,7 @@ void sendLog(int studentID, String method) {
   if (code != 201) {
     Serial.printf("[LOG] Server returned %d -- queuing offline.\n", code);
     queueOfflineLog(studentID, method);
+    setLedTemporaryOverride(LED_OFFLINE);
   }
   http.end();
 }
@@ -582,6 +771,7 @@ void sendOutput(String msg, int commandId) {
 void handleCommand(String cmd, int commandId) {
 
   cmd.trim();
+    Serial.printf("[CMD] Processing: '%s' (ID: %d)\n", cmd.c_str(), commandId);
 
   // ===== MODE =====
   if (cmd.startsWith("set mode ")) {
@@ -591,8 +781,24 @@ void handleCommand(String cmd, int commandId) {
     if (newMode == "scanner" || newMode == "enroll") {
       mode = newMode;
       sendOutput("Mode set to " + newMode, commandId);
+      if (newMode == "scanner") {
+        setDesiredLedState(LED_READY);
+      } else {
+        setDesiredLedState(LED_ENROLL);
+      }
     } else {
       sendOutput("Invalid mode. Use 'scanner' or 'enroll'.", commandId);
+    }
+    return;
+  }
+
+  // ===== CANCEL ENROLLMENT =====
+  if (cmd == "cancel") {
+    if (enrollmentActive) {
+      enrollmentCancelled = true;
+      Serial.println("[CMD] Cancel flag set.");
+    } else {
+      sendOutput("No active enrollment to cancel.", commandId);
     }
     return;
   }
@@ -772,8 +978,6 @@ void handleCommand(String cmd, int commandId) {
         return;
       }
 
-      // Send this BEFORE entering the blocking enrollment function so it
-      // goes out while the WS library is still in a clean state.
       sendOutput("Starting enrollment for student " + String(studentID) + "...", commandId);
       wsFlush();
 
@@ -781,9 +985,6 @@ void handleCommand(String cmd, int commandId) {
 
       if (result == FINGERPRINT_OK) {
         sendOutput("Enrollment successful (slot " + String(slot) + ")", commandId);
-        finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_CYAN);
-        delay(500);
-
       } else {
         sendOutput("Enrollment failed.", commandId);
       }
@@ -805,6 +1006,8 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED: {
       Serial.println("WebSocket connected.");
+      websocketConnected = true;
+      // LED status will update on next loop iteration
       StaticJsonDocument<256> doc;
       doc["type"] = "auth";
       doc["scannerId"] = scannerDbId;
@@ -816,16 +1019,43 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     }
     case WStype_DISCONNECTED:
       Serial.println("WebSocket disconnected.");
-      mode = "scanner";
+      websocketConnected = false;
+      webSocket.disconnect();
+      delay(100);
+      
+      // ← ADD THIS: Only reconnect if WiFi is active
+      if (WifiConnected) {
+        Serial.println("[WS] WiFi connected, attempting WebSocket reconnect...");
+        webSocket.beginSSL(wsHost, wsPort, wsPath);
+        webSocket.onEvent(onWebSocketEvent);
+        webSocket.setReconnectInterval(5000);
+      } else {
+        Serial.println("[WS] WiFi not ready yet, will reconnect when WiFi available.");
+      }
       break;
     case WStype_TEXT: {
       String data = (char*)payload;
+      Serial.printf("[WS] Raw payload: %s\n", data.c_str());
+      
       StaticJsonDocument<256> doc;
       DeserializationError err = deserializeJson(doc, data);
-      if (err) { break; }
+      
+      if (err) {
+        Serial.printf("[WS] JSON parse error: %s\n", err.c_str());
+        break;
+      }
+      
       String command = doc["command"] | "";
       int commandId = doc["commandId"] | 0;
-      if (command != "") handleCommand(command, commandId);
+      
+      Serial.printf("[WS] Parsed command: '%s' (ID: %d)\n", command.c_str(), commandId);
+      
+      if (command != "") {
+        Serial.println("[WS] Calling handleCommand...");
+        handleCommand(command, commandId);
+      } else {
+        Serial.println("[WS] Command was empty!");
+      }
       break;
     }
     case WStype_ERROR:
@@ -842,8 +1072,6 @@ void connectWifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   WifiConnected = false;
-  // No waiting — just fires off the connection and returns immediately.
-  // WiFi.status() will become WL_CONNECTED on its own in the background.
 }
 
 // ========== Offline Logging ==========
@@ -928,7 +1156,7 @@ void flushOfflineLogs() {
     doc["student_id"]       = entry.studentID;
     doc["date_scanned"]     = entry.date;
     doc["time_scanned"]     = entry.time;
-    doc["status"]           = "present";
+    doc["status"]           = "null";
     doc["method"]           = entry.method;
 
     String body;
@@ -981,185 +1209,230 @@ void setup() {
 
   Serial.println("[INIT] Syncing time with NTP (non-blocking)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  // Don't wait -- NTP will sync in the background.
-  // getDateTime() already returns "0000-00-00" / "00:00:00" if time isn't ready,
-  // so offline logs queued before sync will just have fallback timestamps.
-
-  Serial.println("[INIT] Auth and flush will happen once WiFi connects.");
 }
 
 // ========== LOOP ========== 
 void loop() {
-    webSocket.loop();
+  // ========== WEBSOCKET & NETWORK MANAGEMENT ==========
+  webSocket.loop();
 
-    if (mode == "scanner") {
+  // ========== WiFi Status Management ==========
+  static unsigned long lastWifiRetry = 0;
+  static bool wifiJustConnected = false;
+
+  if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
+    WifiConnected = true;
+    wifiJustConnected = true;
+    Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
+  } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
+    WifiConnected = false;
+  } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
+    if (millis() - lastWifiRetry > 300000) {
+      lastWifiRetry = millis();
+      Serial.println("[WIFI] Attempting reconnect...");
+      connectWifi();
+    }
+  }
+
+  if (wifiJustConnected) {
+    wifiJustConnected = false;
+    if (signIn()) {
+      flushOfflineLogs();
+    }
+    webSocket.beginSSL(wsHost, wsPort, wsPath);
+    webSocket.onEvent(onWebSocketEvent);
+    webSocket.setReconnectInterval(5000);
+  }
+
+  // ========== LED STATUS UPDATE (NON-BLOCKING) ==========
+  // Determine base mode state (breathing blue or cyan)
+  if (mode == "enroll") {
+    if (currentLedState == LED_READY) {  // Only change if not in the middle of something
+      setDesiredLedState(LED_ENROLL);
+    }
+  } else {
+    if (currentLedState == LED_ENROLL) {  // Only change if not in the middle of something
+      setDesiredLedState(LED_READY);
+    }
+  }
+
+  // Update LED state machine (handles status flashing and breathing)
+  updateLedStatus();
+
+  // ========== NFC SCANNING (Scanner Mode Only) ==========
+  if (mode == "scanner" || mode == "enroll") {
     static unsigned long nfcWindowStart = 0;
     static bool nfcActive = true;
 
     if (nfcActive) {
-        if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
-            lastNFCCheck = millis();
-            handleNFCCardNonBlocking();
-        }
-        if (millis() - nfcWindowStart >= 500) {
-            nfcActive = false;
-            nfcWindowStart = millis();
-            Wire.end();
-            delay(50);
-            Wire.begin(21, 22);
-            nfc.begin();
-            nfc.SAMConfig();
-        }
+      if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
+        lastNFCCheck = millis();
+        handleNFCCardNonBlocking();
+      }
+      if (millis() - nfcWindowStart >= 500) {
+        nfcActive = false;
+        nfcWindowStart = millis();
+        Wire.end();
+        //delay(50);
+        Wire.begin(21, 22);
+        nfc.begin();
+        nfc.SAMConfig();
+      }
     } else {
-        if (millis() - nfcWindowStart >= 2000) {
-            nfcActive = true;
-            nfcWindowStart = millis();
-        }
+      if (millis() - nfcWindowStart >= 2000) {
+        nfcActive = true;
+        nfcWindowStart = millis();
+      }
     }
+  }
+
+  // ========== FINGERPRINT SCANNING ==========
+  if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
+    int fingerID = scanFingerprint();
+    if (fingerID >= 0) {
+      int studentID = findStudent(fingerID);
+      if (studentID > 0) {
+        setLedTemporaryOverride(LED_SUCCESS);
+        if (mode == "scanner") {
+          pendingLog.studentID = studentID;
+          strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
+          pendingLog.pending = true;
+          sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
+        }
+        delay(3000);
+      }
+    }
+  }
+
+  // ========== PROCESS PENDING LOG ==========
+  if (pendingLog.pending) {
+    pendingLog.pending = false;
+    sendLog(pendingLog.studentID, String(pendingLog.method));
+  }
+
+  // ========== BUTTON HANDLING ==========
+  handleButton();
+
+  // ========== HEARTBEAT ==========
+  static unsigned long lastHeartbeat = 0;
+  if (millis() - lastHeartbeat > 5000) {
+    sendHeartbeat();
+    lastHeartbeat = millis();
+  }
+
+  delay(10);
 }
 
-    static unsigned long lastWifiRetry = 0;
-    static bool wifiJustConnected = false;
+bool clearNFCTag() {
+  // Overwrite pages 4-7 with zeroes, then place a TLV terminator
+  uint8_t blank[4] = {0x00, 0x00, 0x00, 0x00};
+  uint8_t term[4]  = {0xFE, 0x00, 0x00, 0x00}; // TLV terminator in page 4
 
-    if (WiFi.status() == WL_CONNECTED && !WifiConnected) {
-        WifiConnected = true;
-        wifiJustConnected = true;
-        Serial.println("[WIFI] Connected. IP: " + WiFi.localIP().toString());
-        updateLedStatus();
-    } else if (WiFi.status() != WL_CONNECTED && WifiConnected) {
-        WifiConnected = false;
-        updateLedStatus();
-    } else if (WiFi.status() != WL_CONNECTED && !WifiConnected) {
-        if (millis() - lastWifiRetry > 300000) {
-            lastWifiRetry = millis();
-            Serial.println("[WIFI] Attempting reconnect...");
-            connectWifi();
-        }
-    }
-
-    if (wifiJustConnected) {
-        wifiJustConnected = false;
-        if (signIn()) {
-            flushOfflineLogs();
-        }
-        webSocket.beginSSL(wsHost, wsPort, wsPath);
-        webSocket.onEvent(onWebSocketEvent);
-        webSocket.setReconnectInterval(5000);
-    }
-
-    updateLedStatus();
-
-    if (fingerprintInitialized && (mode == "scanner" || mode == "enroll")) {
-        int fingerID = scanFingerprint();
-        if (fingerID >= 0) {
-            int studentID = findStudent(fingerID);
-            if (studentID > 0) {
-                finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                if (mode == "scanner") {
-                    // Queue the log, don't block here
-                    static unsigned long lastHeartbeat = 0;
-                    if (millis() - lastHeartbeat > 2000) {
-                        sendHeartbeat();
-                        lastHeartbeat = millis();
-                    }
-                    pendingLog.studentID = studentID;
-                    strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
-                    pendingLog.pending = true;
-                    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
-                    sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
-                }
-                delay(3000);
-            }
-        }
-    }
-
-    // Process pending log separately so it doesn't block scanning
-    if (pendingLog.pending) {
-        pendingLog.pending = false;
-        sendLog(pendingLog.studentID, String(pendingLog.method));
-    }
-    handleButton();
-
-    static unsigned long lastHeartbeat = 0;
-    if (millis() - lastHeartbeat > 5000) {
-        sendHeartbeat();
-        lastHeartbeat = millis();
-    }
-
-    int raw = analogRead(batteryPin);
-    float voltageAtPin = (raw / 4095.0) * VREF;
-    float batteryVoltage = voltageAtPin * ((R1 + R2)/R2) * calibrationFactor;
-
-    delay(10);
+  // Write terminator to page 4, blank to pages 5-7
+  if (!nfc.ntag2xx_WritePage(4, term)) return false;
+  for (int page = 5; page <= 7; page++) {
+    if (!nfc.ntag2xx_WritePage(page, blank)) return false;
+  }
+  Serial.println("[NFC] Tag cleared.");
+  return true;
 }
 
 bool writeNFCText(String text) {
-    // Build NDEF text record
-    uint8_t textLen = text.length();
-    uint8_t payloadLen = 3 + textLen; // status byte + "en" lang + text
-    uint8_t msgLen = 3 + payloadLen;  // record header + payload
+  // Build NDEF text record
+  uint8_t textLen = text.length();
+  uint8_t payloadLen = 3 + textLen; // status byte + "en" lang + text
+  uint8_t msgLen = 3 + payloadLen;  // record header + payload
 
-    // Full NDEF message buffer (pages 4-7 = 16 bytes)
-    uint8_t buf[16] = {0};
-    int i = 0;
-    buf[i++] = 0x03;        // NDEF TLV type
-    buf[i++] = msgLen;      // message length
-    buf[i++] = 0xD1;        // MB ME SR=1, TNF=0x01 (Well Known)
-    buf[i++] = 0x01;        // type length = 1
-    buf[i++] = payloadLen;  // payload length
-    buf[i++] = 'T';         // type = Text
-    buf[i++] = 0x02;        // status: UTF-8, lang length = 2
-    buf[i++] = 'e';         // lang: "en"
-    buf[i++] = 'n';
-    for (int j = 0; j < textLen && i < 15; j++) {
-        buf[i++] = text[j];
-    }
-    buf[i] = 0xFE;          // TLV terminator
+  // Full NDEF message buffer (pages 4-7 = 16 bytes)
+  uint8_t buf[16] = {0};
+  int i = 0;
+  buf[i++] = 0x03;        // NDEF TLV type
+  buf[i++] = msgLen;      // message length
+  buf[i++] = 0xD1;        // MB ME SR=1, TNF=0x01 (Well Known)
+  buf[i++] = 0x01;        // type length = 1
+  buf[i++] = payloadLen;  // payload length
+  buf[i++] = 'T';         // type = Text
+  buf[i++] = 0x02;        // status: UTF-8, lang length = 2
+  buf[i++] = 'e';         // lang: "en"
+  buf[i++] = 'n';
+  for (int j = 0; j < textLen && i < 15; j++) {
+    buf[i++] = text[j];
+  }
+  buf[i] = 0xFE;          // TLV terminator
 
-    // Write 4 bytes per page starting at page 4
-    for (int page = 4; page <= 7; page++) {
-        uint8_t pageData[4];
-        memcpy(pageData, &buf[(page - 4) * 4], 4);
-        if (!nfc.ntag2xx_WritePage(page, pageData)) {
-            Serial.println("[NFC] Write failed on page " + String(page));
-            return false;
-        }
+  // Write 4 bytes per page starting at page 4
+  for (int page = 4; page <= 7; page++) {
+    uint8_t pageData[4];
+    memcpy(pageData, &buf[(page - 4) * 4], 4);
+    if (!nfc.ntag2xx_WritePage(page, pageData)) {
+      Serial.println("[NFC] Write failed on page " + String(page));
+      return false;
     }
-    Serial.println("[NFC] Wrote \"" + text + "\" to tag.");
-    return true;
+  }
+  Serial.println("[NFC] Wrote \"" + text + "\" to tag.");
+  return true;
 }
 
 void handleNFCCardNonBlocking() {
-    uint8_t uid[7];
-    uint8_t uidLength;
-    // Very short timeout (20 ms) – just polls, never blocks the loop
-    bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
-    if (success) {
-        if (uidLength == 7) {   // NTAG21x series
-            String nfcText = readNFCNDEFText();   // your existing function
-            if (nfcText.length() > 0) {
-                nfcText.trim();
-                bool isNumeric = true;
-                for (unsigned int i = 0; i < nfcText.length(); i++) {
-                  if (!isdigit(nfcText[i])) { isNumeric = false; break; }
-                }
-                if (isNumeric && nfcText.length() > 0) {
-                  int studentID = nfcText.toInt();
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_GREEN);
-                  delay(500);
-                  writeNFCText("Successfully emptied NFC Payload!");
-                  finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 2000, FINGERPRINT_LED_BLUE);
-                  sendLog(studentID, "NFC");
-                  sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-                  
-                } else {
-                  sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
-                }
-            } else {
-              //sendOutput("NFC Scan - No valid NDEF text record found on tag.", -1);
-            }
+  uint8_t uid[7];
+  uint8_t uidLength;
+  
+  bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
+  if (success) {
+    if (uidLength == 7) {   // NTAG21x series
+      String nfcText = readNFCNDEFText();
+      
+      if (nfcText.length() > 0) {
+        nfcText.trim();
+        bool isNumeric = true;
+        for (unsigned int i = 0; i < nfcText.length(); i++) {
+          if (!isdigit(nfcText[i])) { isNumeric = false; break; }
         }
-        // Optional: add a short delay to avoid reading the same card repeatedly
-        delay(500);   // prevents multiple logs for one tap
+        
+        // ── ENROLLMENT MODE: Use NFC to trigger enrollment ──
+        if (mode == "enroll" && isNumeric && nfcText.length() > 0) {
+          if (enrollmentActive) {
+            // Don't interrupt an in-progress enrollment
+            return;
+          }
+          int studentID = nfcText.toInt();
+          int slot = getNextFreeSlot();
+          
+          if (slot == -1) {
+            sendOutput("No free slots for NFC enrollment.", -1);
+            return;
+          }
+          
+          sendOutput("Starting enrollment for student " + String(studentID) + " (via NFC)...", -1);
+          wsFlush();
+          
+          uint8_t result = getFingerprintEnroll(slot, studentID);
+          
+          if (result == FINGERPRINT_OK) {
+            // Write confirmation to NFC
+            clearNFCTag();
+            sendOutput("✓ NFC enrollment successful!", -1);
+          } else {
+            sendOutput("✗ NFC enrollment failed.", -1);
+          }
+          delay(500);
+          return;
+        }
+        
+        // ── SCANNER MODE: Log attendance ──
+        if (mode == "scanner" && isNumeric && nfcText.length() > 0) {
+          int studentID = nfcText.toInt();
+          clearNFCTag();
+          setLedTemporaryOverride(LED_SUCCESS);
+          sendLog(studentID, "NFC");
+          sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
+        } else if (!isNumeric) {
+          sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
+        }
+      }
     }
+    
+    // Prevent repeated reads of the same card
+    delay(500);
+  }
 }
