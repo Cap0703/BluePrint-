@@ -1,3 +1,8 @@
+/**
+ * public/js/scanners.js
+ * Manages connected scanner state, terminal command queues, and scanner UI interactions.
+ * @ai-generated
+ */
 const scannerState = {
   scanners: [],
   editingId: null
@@ -28,6 +33,11 @@ const COMMANDS = [
 
 let terminalSocket = null;
 
+/**
+ * Initializes the scanners page by binding UI actions and loading scanner data.
+ * @ai-generated
+ * @returns {void}
+ */
 document.addEventListener('DOMContentLoaded', initScannersPage);
 
 function initScannersPage() {
@@ -35,6 +45,11 @@ function initScannersPage() {
   loadScanners();
 }
 
+/**
+ * Attaches event listeners for scanner management controls and terminal interactions.
+ * @ai-generated
+ * @returns {void}
+ */
 function bindScannerUi() {
   document.getElementById('uploadScannersBtn').addEventListener('click', () => {
     document.getElementById('scannerCsvInput').click();
@@ -77,6 +92,11 @@ function bindScannerUi() {
   });
 }
 
+/**
+ * Loads the scanner inventory from the server and refreshes UI components.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function loadScanners() {
   const container = document.getElementById('scannersListContainer');
   container.innerHTML = '<div class="loading-state-panel">Loading scanners...</div>';
@@ -91,6 +111,11 @@ async function loadScanners() {
   }
 }
 
+/**
+ * Renders scanner fleet metrics based on loaded scanner state.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderScannerMetrics() {
   const scanners = scannerState.scanners;
   const online = scanners.filter(scanner => String(scanner.scanner_status || '').toLowerCase() === 'online').length;
@@ -108,6 +133,11 @@ function renderScannerMetrics() {
   document.getElementById('scannerFleetPill').textContent = scanners.length ? `${scanners.length} scanners tracked` : 'No scanners yet';
 }
 
+/**
+ * Builds the scanner management table from the current scanner state.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderScannersTable() {
   const container = document.getElementById('scannersListContainer');
   if (!scannerState.scanners.length) {
@@ -173,6 +203,11 @@ function renderScannersTable() {
   });
 }
 
+/**
+ * Opens the modal to create a new scanner.
+ * @ai-generated
+ * @returns {void}
+ */
 function openCreateScannerModal() {
   scannerState.editingId = null;
   document.getElementById('scannerForm').reset();
@@ -183,6 +218,12 @@ function openCreateScannerModal() {
   document.getElementById('scannerModal').style.display = 'flex';
 }
 
+/**
+ * Opens the scanner edit modal and populates form fields.
+ * @ai-generated
+ * @param {Object} scanner - Scanner object to edit.
+ * @returns {void}
+ */
 function openEditScannerModal(scanner) {
   scannerState.editingId = scanner.id;
   document.getElementById('scanner_id').value = scanner.scanner_id || '';
@@ -195,10 +236,21 @@ function openEditScannerModal(scanner) {
   document.getElementById('scannerModal').style.display = 'flex';
 }
 
+/**
+ * Closes the scanner create/edit modal.
+ * @ai-generated
+ * @returns {void}
+ */
 function closeScannerModal() {
   document.getElementById('scannerModal').style.display = 'none';
 }
 
+/**
+ * Submits the scanner form to create or update a scanner.
+ * @ai-generated
+ * @param {Event} event - The form submit event.
+ * @returns {Promise<void>}
+ */
 async function submitScannerForm(event) {
   event.preventDefault();
   const messageEl = document.getElementById('scannerMessage');
@@ -252,6 +304,12 @@ async function submitScannerForm(event) {
   }
 }
 
+/**
+ * Deletes the selected scanner from the backend.
+ * @ai-generated
+ * @param {Object} scanner - Scanner object to remove.
+ * @returns {Promise<void>}
+ */
 async function deleteScanner(scanner) {
   if (!confirm(`Delete scanner "${scanner.scanner_id}"?`)) {
     return;
@@ -269,6 +327,12 @@ async function deleteScanner(scanner) {
   }
 }
 
+/**
+ * Handles bulk scanner CSV upload and sends scanner records to the backend.
+ * @ai-generated
+ * @param {Event} event - File change event from CSV input.
+ * @returns {Promise<void>}
+ */
 async function handleScannersCsvUpload(event) {
   const [file] = event.target.files || [];
   if (!file) return;
@@ -305,6 +369,12 @@ async function handleScannersCsvUpload(event) {
   }
 }
 
+/**
+ * Opens the terminal UI for a selected scanner.
+ * @ai-generated
+ * @param {Object} scanner - Scanner to open terminal for.
+ * @returns {Promise<void>}
+ */
 async function openTerminal(scanner) {
   terminalState.scannerId = scanner.id;
   terminalState.scannerLabel = `${scanner.scanner_id} | ${scanner.scanner_location}`;
@@ -322,6 +392,11 @@ async function openTerminal(scanner) {
   document.getElementById('terminalInput').focus();
 }
 
+/**
+ * Connects to the backend WebSocket for live scanner terminal updates.
+ * @ai-generated
+ * @returns {void}
+ */
 function connectTerminalWebSocket() {
   if (terminalSocket) {
     terminalSocket.close();
@@ -349,6 +424,11 @@ terminalSocket = new WebSocket(`${wsProtocol}${window.location.host}/ws`);
   };
 }
 
+/**
+ * Closes the scanner terminal modal and cleans up any polling/socket resources.
+ * @ai-generated
+ * @returns {void}
+ */
 function closeTerminal() {
   document.getElementById('terminalModal').style.display = 'none';
   if (terminalState.poller) {
@@ -362,6 +442,11 @@ function closeTerminal() {
   terminalState.scannerId = null;
 }
 
+/**
+ * Starts polling scanner terminal status at a fixed interval.
+ * @ai-generated
+ * @returns {void}
+ */
 function startTerminalPolling() {
   if (terminalState.poller) {
     clearInterval(terminalState.poller);
@@ -372,6 +457,12 @@ function startTerminalPolling() {
   }, 1500);
 }
 
+/**
+ * Refreshes the current terminal session state and appends received output.
+ * @ai-generated
+ * @param {boolean} [forceIntro=false] - If true, writes an introductory status line.
+ * @returns {Promise<void>}
+ */
 async function refreshTerminalStatus(forceIntro = false) {
   if (!terminalState.scannerId) return;
 
@@ -407,6 +498,11 @@ async function refreshTerminalStatus(forceIntro = false) {
   }
 }
 
+/**
+ * Submits user-entered terminal input to the scanner session.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function submitTerminalInput() {
   const input = document.getElementById('terminalInput');
   const command = input.value.trim();
@@ -416,6 +512,12 @@ async function submitTerminalInput() {
   input.focus();
 }
 
+/**
+ * Sends a command to the active scanner terminal session.
+ * @ai-generated
+ * @param {string} command - Terminal command string.
+ * @returns {Promise<void>}
+ */
 async function sendTerminalCommand(command) {
   if (!terminalState.scannerId) return;
 
@@ -443,6 +545,11 @@ async function sendTerminalCommand(command) {
   }
 }
 
+/**
+ * Updates the terminal UI labels and placeholder text based on current mode.
+ * @ai-generated
+ * @returns {void}
+ */
 function updateTerminalModeUi() {
   const modeEl = document.getElementById('modeIndicator');
   const hintEl = document.getElementById('terminalHint');
@@ -467,6 +574,13 @@ function updateTerminalModeUi() {
   input.placeholder = 'Enter scanner command';
 }
 
+/**
+ * Updates the heartbeat indicator for the scanner terminal session.
+ * @ai-generated
+ * @param {string|null} scannerLastSeenAt - Last seen timestamp reported by scanner.
+ * @param {boolean} [isError=false] - Whether the heartbeat is in an error state.
+ * @returns {void}
+ */
 function updateHeartbeat(scannerLastSeenAt, isError = false) {
   const pill = document.getElementById('scannerHeartbeatPill');
   if (isError) {
@@ -480,6 +594,13 @@ function updateHeartbeat(scannerLastSeenAt, isError = false) {
   pill.textContent = `Scanner seen ${formatRelativeTime(scannerLastSeenAt)}`;
 }
 
+/**
+ * Appends a line of terminal output to the terminal stream.
+ * @ai-generated
+ * @param {string} text - Text to append.
+ * @param {string} type - CSS class for line type (e.g. output, command, error).
+ * @returns {void}
+ */
 function appendTerminalLine(text, type) {
   const stream = document.getElementById('terminalLines');
   const line = document.createElement('div');
@@ -489,6 +610,12 @@ function appendTerminalLine(text, type) {
   stream.scrollTop = stream.scrollHeight;
 }
 
+/**
+ * Normalizes scanner status values into a readable label.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw scanner status.
+ * @returns {string}
+ */
 function normalizeScannerStatus(status) {
   const value = String(status || '').trim().toLowerCase();
   if (value === 'online') return 'Online';
@@ -497,6 +624,12 @@ function normalizeScannerStatus(status) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/**
+ * Maps scanner status labels to CSS class names for table display.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw scanner status.
+ * @returns {string}
+ */
 function statusClass(status) {
   const value = normalizeScannerStatus(status).toLowerCase();
   if (value === 'online') return 'on-time';
@@ -504,6 +637,12 @@ function statusClass(status) {
   return 'unknown';
 }
 
+/**
+ * Formats a timestamp into a readable date/time string.
+ * @ai-generated
+ * @param {string|number} value - Timestamp or date string.
+ * @returns {string}
+ */
 function formatDateTime(value) {
   if (!value) return 'Never';
   const date = new Date(value);
@@ -511,6 +650,12 @@ function formatDateTime(value) {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
+/**
+ * Converts a timestamp into a human relative time string.
+ * @ai-generated
+ * @param {string|number|Date} value - Timestamp or date value.
+ * @returns {string}
+ */
 function formatRelativeTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'recently';
@@ -524,6 +669,12 @@ function formatRelativeTime(value) {
   return `${diffHours}h ago`;
 }
 
+/**
+ * Formats a battery voltage or level value for display.
+ * @ai-generated
+ * @param {number|string|null|undefined} value - Battery reading.
+ * @returns {string}
+ */
 function formatBattery(value) {
   if (value === null || value === undefined || value === '') return 'N/A';
   // If value > 10, treat as percentage? Or just show volts.
@@ -533,6 +684,12 @@ function formatBattery(value) {
   return `${value} | ${Value}`;
 }
 
+/**
+ * Converts voltage to a battery percentage between 0 and 100.
+ * @ai-generated
+ * @param {number} voltage - Voltage reading.
+ * @returns {number}
+ */
 function voltageToPercent(voltage) {
   const min = 3.0, max = 4.2;
   let percent = (voltage - min) / (max - min) * 100;
@@ -540,6 +697,12 @@ function voltageToPercent(voltage) {
   return Math.round(percent);
 }
 
+/**
+ * Returns HTML markup for scanner metric cards.
+ * @ai-generated
+ * @param {{label:string,value:number|string,footnote:string}} metric
+ * @returns {string}
+ */
 function metricCardMarkup(metric) {
   return `
     <div class="metric-card glass-panel">
@@ -550,6 +713,13 @@ function metricCardMarkup(metric) {
   `;
 }
 
+/**
+ * Sends a fetch request with the stored authorization token.
+ * @ai-generated
+ * @param {string} url - Endpoint URL.
+ * @param {RequestInit} [options={}] - Fetch options.
+ * @returns {Promise<Response>}
+ */
 function fetchWithToken(url, options = {}) {
   const token = localStorage.getItem('auth_token');
   const headers = {
@@ -559,6 +729,12 @@ function fetchWithToken(url, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+/**
+ * Fetches JSON from the given endpoint and throws on failure.
+ * @ai-generated
+ * @param {string} url - Endpoint URL.
+ * @returns {Promise<any>}
+ */
 async function fetchJson(url) {
   const response = await fetchWithToken(url);
   if (!response.ok) {
@@ -567,6 +743,12 @@ async function fetchJson(url) {
   return response.json();
 }
 
+/**
+ * Escapes a value for safe HTML output.
+ * @ai-generated
+ * @param {string|number} value - Value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -576,6 +758,12 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Parses CSV text into an array of row objects using normalized headers.
+ * @ai-generated
+ * @param {string} text - Raw CSV content.
+ * @returns {Array<Object>}
+ */
 function parseCsv(text) {
   const rows = [];
   let current = '';
@@ -636,6 +824,12 @@ function parseCsv(text) {
   });
 }
 
+/**
+ * Normalizes a CSV header cell into a safe lowercase key.
+ * @ai-generated
+ * @param {string} value - Header label.
+ * @returns {string}
+ */
 function normalizeCsvHeader(value) {
   return String(value || '')
     .trim()
@@ -644,6 +838,13 @@ function normalizeCsvHeader(value) {
     .replace(/^_+|_+$/g, '');
 }
 
+/**
+ * Picks the first matching value from a CSV row using a set of candidate keys.
+ * @ai-generated
+ * @param {Object} row - Parsed CSV row.
+ * @param {Array<string>} keys - Possible header names.
+ * @returns {string}
+ */
 function pickCsvValue(row, keys) {
   for (const key of keys) {
     if (row[key]) return row[key];
@@ -651,6 +852,11 @@ function pickCsvValue(row, keys) {
   return '';
 }
 
+/**
+ * Downloads a sample CSV template for scanner bulk upload.
+ * @ai-generated
+ * @returns {void}
+ */
 function downloadScannersTemplate() {
   downloadCsvRows([
     ['scanner_id', 'scanner_location', 'password'],
@@ -658,6 +864,13 @@ function downloadScannersTemplate() {
   ], 'scanners_template.csv');
 }
 
+/**
+ * Downloads the supplied rows as a CSV file.
+ * @ai-generated
+ * @param {Array<Array<string>>} rows - CSV rows.
+ * @param {string} fileName - File name to save.
+ * @returns {void}
+ */
 function downloadCsvRows(rows, fileName) {
   const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -671,6 +884,12 @@ function downloadCsvRows(rows, fileName) {
   window.URL.revokeObjectURL(url);
 }
 
+/**
+ * Escapes a value for CSV output.
+ * @ai-generated
+ * @param {string|number|null|undefined} value - Raw cell value.
+ * @returns {string}
+ */
 function escapeCsvValue(value) {
   const normalized = value === undefined || value === null ? '' : String(value);
   if (!/[",\n\r]/.test(normalized)) return normalized;

@@ -1,3 +1,8 @@
+/**
+ * public/js/navbar.js
+ * Loads and mounts the global navbar into each page, adapts menu visibility, and handles toggling.
+ * @ai-generated
+ */
 document.addEventListener("DOMContentLoaded", () => {
   fetch("/navbar.html")
     .then(res => res.text())
@@ -60,6 +65,11 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch(console.error);
 });
 
+/**
+ * Hides protected navbar links when the current user is not an administrator.
+ * @ai-generated
+ * @returns {void}
+ */
 function hideLinksForNonAdmin() {
   if (!window.currentUser || window.currentUser.role === 'administrator') return;
   const protectedPages = ['admin', 'master_logs', 'scanners', 'app_settings'];
@@ -71,6 +81,11 @@ function hideLinksForNonAdmin() {
   });
 }
 
+/**
+ * Marks the current page link as active in the navbar.
+ * @ai-generated
+ * @returns {void}
+ */
 function setActiveNavLink() {
   const currentPath = window.location.pathname;
   const navLinks = document.querySelectorAll('.navbar-link');
@@ -86,6 +101,13 @@ function setActiveNavLink() {
   });
 }
 
+/**
+ * Synchronizes the navbar presentation based on viewport size and pinned state.
+ * @ai-generated
+ * @param {HTMLElement} navbar - Navbar element to update.
+ * @param {MediaQueryList} mobileQuery - Media query matching mobile screens.
+ * @returns {void}
+ */
 function syncNavbarMode(navbar, mobileQuery) {
   if (mobileQuery.matches) {
     navbar.classList.remove("pinned");
@@ -99,6 +121,14 @@ function syncNavbarMode(navbar, mobileQuery) {
   }
 }
 
+/**
+ * Updates the navbar toggle icon based on menu state and screen width.
+ * @ai-generated
+ * @param {HTMLElement} navbar - Navbar element whose mode is reflected by the icon.
+ * @param {HTMLElement} icon - Icon element to update.
+ * @param {MediaQueryList} mobileQuery - Media query matching mobile screens.
+ * @returns {void}
+ */
 function updateNavToggleIcon(navbar, icon, mobileQuery) {
   if (!icon) return;
   if (mobileQuery.matches) {

@@ -1,18 +1,42 @@
+/**
+ * public/js/calendar.js
+ * Renders the day schedule, converts calendar times, and filters calendar events for display.
+ * @ai-generated
+ */
 const CALENDAR_START_HOUR = 6;
 const CALENDAR_END_HOUR = 24;
 const MINUTE_HEIGHT = 1;
 const TOP_OFFSET = 0;
 
+/**
+ * Converts total minutes into a pixel offset for the calendar layout.
+ * @ai-generated
+ * @param {number} totalMinutes - Minutes since midnight.
+ * @returns {number}
+ */
 function minuteToCalendarOffset(totalMinutes) {
     return ((totalMinutes - (CALENDAR_START_HOUR * 60)) * MINUTE_HEIGHT) + TOP_OFFSET;
 }
 
+/**
+ * Formats a time value into a human-readable am/pm string.
+ * @ai-generated
+ * @param {number} hours - Hour value in 24-hour time.
+ * @param {number} minutes - Minute value.
+ * @returns {string}
+ */
 function formatDisplayTime(hours, minutes) {
     const ampm = hours >= 12 ? 'PM' : 'AM';
     const displayHours = hours === 0 ? 12 : (hours > 12 ? hours - 12 : hours);
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
 }
 
+/**
+ * Filters out lunch, break, and transition events from the schedule display.
+ * @ai-generated
+ * @param {Array<Object>} events - Calendar event objects.
+ * @returns {Array<Object>}
+ */
 function filteredCalendarEvents(events) {
     return (events || []).filter(event => {
         const title = String(event.title || '').toLowerCase();
@@ -20,6 +44,11 @@ function filteredCalendarEvents(events) {
     });
 }
 
+/**
+ * Updates calendar container size based on the configured schedule span.
+ * @ai-generated
+ * @returns {void}
+ */
 function updateCalendarLayoutMetrics() {
     const grid = document.querySelector('.calendar-grid');
     if (grid) {
@@ -27,6 +56,11 @@ function updateCalendarLayoutMetrics() {
     }
 }
 
+/**
+ * Builds HTML markup for hour and half-hour markers in the calendar.
+ * @ai-generated
+ * @returns {string}
+ */
 function buildTimeMarkers() {
     let html = '';
     for (let hour = CALENDAR_START_HOUR; hour < CALENDAR_END_HOUR; hour += 1) {
@@ -36,6 +70,12 @@ function buildTimeMarkers() {
     return html;
 }
 
+/**
+ * Builds markup to display the current time indicator on the schedule.
+ * @ai-generated
+ * @param {number} currentTotalMinutes - Current minutes past midnight.
+ * @returns {string}
+ */
 function buildCurrentTimeMarkup(currentTotalMinutes) {
     if (currentTotalMinutes < CALENDAR_START_HOUR * 60 || currentTotalMinutes >= CALENDAR_END_HOUR * 60) {
         return '';
@@ -51,6 +91,14 @@ function buildCurrentTimeMarkup(currentTotalMinutes) {
     `;
 }
 
+/**
+ * Builds event block HTML for a calendar event.
+ * @ai-generated
+ * @param {Object} event - Calendar event object.
+ * @param {number} currentTotalMinutes - Current time in minutes for active period detection.
+ * @param {boolean} [isFallback=false] - Whether event is a fallback schedule entry.
+ * @returns {{html:string,isCurrent:boolean}}
+ */
 function buildEventMarkup(event, currentTotalMinutes, isFallback = false) {
     const [startHourRaw, startMinuteRaw] = String(event.startTime || '').split(':');
     const [endHourRaw, endMinuteRaw] = String(event.endTime || '').split(':');
@@ -89,6 +137,14 @@ function buildEventMarkup(event, currentTotalMinutes, isFallback = false) {
     };
 }
 
+/**
+ * Builds fallback markup when there is no active period currently.
+ * @ai-generated
+ * @param {number} currentTotalMinutes - Current time in minutes.
+ * @param {string} message - Message to display.
+ * @param {Object} [styles={}] - Optional styling overrides.
+ * @returns {string}
+ */
 function buildNoCurrentPeriodMarkup(currentTotalMinutes, message, styles = {}) {
     const maxOffset = minuteToCalendarOffset(CALENDAR_END_HOUR * 60);
     const boundedMinutes = Math.max(CALENDAR_START_HOUR * 60, Math.min(CALENDAR_END_HOUR * 60, currentTotalMinutes));
@@ -106,11 +162,21 @@ function buildNoCurrentPeriodMarkup(currentTotalMinutes, message, styles = {}) {
     `;
 }
 
+/**
+ * Fetches and returns today’s filtered calendar periods.
+ * @ai-generated
+ * @returns {Promise<Array<Object>>}
+ */
 async function getPeriodsToday() {
     const calendarData = await getCalendarEvents();
     return filteredCalendarEvents(calendarData.events);
 }
 
+/**
+ * Loads calendar events from the backend and renders them into the UI.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function loadCalendarEvents() {
     const container = document.getElementById('eventsContainer');
     container.innerHTML = `
@@ -132,6 +198,11 @@ async function loadCalendarEvents() {
     }
 }
 
+/**
+ * Fetches today’s calendar events from the backend and returns parsed JSON.
+ * @ai-generated
+ * @returns {Promise<Object>}
+ */
 async function getCalendarEvents() {
     try {
         const response = await fetch('/api/calendar/today');
@@ -162,6 +233,12 @@ async function getCalendarEvents() {
     }
 }
 
+/**
+ * Displays the calendar event schedule for the provided calendar data.
+ * @ai-generated
+ * @param {Object} calendarData - Data object containing events and lastUpdated.
+ * @returns {void}
+ */
 function displayEvents(calendarData) {
     const container = document.getElementById('eventsContainer');
     updateCalendarLayoutMetrics();
@@ -203,6 +280,11 @@ function displayEvents(calendarData) {
     container.innerHTML = html;
 }
 
+/**
+ * Displays fallback schedule events when the calendar cannot be loaded.
+ * @ai-generated
+ * @returns {void}
+ */
 function displayFallbackEvents() {
     const fallbackEvents = [
         { title: 'Period 1', startTime: '08:00', endTime: '09:25' },

@@ -1,3 +1,8 @@
+/**
+ * public/js/analytics.js
+ * Responsible for loading attendance analytics data, rendering tables, and applying filters.
+ * @ai-generated
+ */
 const analyticsState = {
   rows: [],
   filteredRows: []
@@ -5,6 +10,11 @@ const analyticsState = {
 
 document.addEventListener('DOMContentLoaded', initAnalyticsPage);
 
+/**
+ * Initializes the analytics page by fetching attendance analytics and wiring page controls.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function initAnalyticsPage() {
   const token = localStorage.getItem('auth_token');
   if (!token) {
@@ -38,6 +48,11 @@ async function initAnalyticsPage() {
   }
 }
 
+/**
+ * Populates the analytics filter dropdowns for period and location.
+ * @ai-generated
+ * @returns {void}
+ */
 function populateAnalyticsFilters() {
   const periods = [...new Set(analyticsState.rows.map(row => row.period).filter(Boolean))];
   const rooms = [...new Set(analyticsState.rows.map(row => row.scanner_location).filter(Boolean))];
@@ -50,12 +65,22 @@ function populateAnalyticsFilters() {
     .join('');
 }
 
+/**
+ * Binds filter controls to the analytics filter handler.
+ * @ai-generated
+ * @returns {void}
+ */
 function bindAnalyticsFilters() {
   document.getElementById('analyticsSearch').addEventListener('input', applyAnalyticsFilters);
   document.getElementById('analyticsPeriodFilter').addEventListener('change', applyAnalyticsFilters);
   document.getElementById('analyticsLocationFilter').addEventListener('change', applyAnalyticsFilters);
 }
 
+/**
+ * Applies search and dropdown filters against the cached analytics rows.
+ * @ai-generated
+ * @returns {void}
+ */
 function applyAnalyticsFilters() {
   const search = document.getElementById('analyticsSearch').value.trim().toLowerCase();
   const period = document.getElementById('analyticsPeriodFilter').value;
@@ -72,6 +97,11 @@ function applyAnalyticsFilters() {
   renderAnalytics();
 }
 
+/**
+ * Renders the full analytics dashboard including metrics, tables, and charts.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderAnalytics() {
   renderAnalyticsMetrics();
   renderAnalyticsTable();
@@ -80,6 +110,11 @@ function renderAnalytics() {
   document.getElementById('analyticsLastUpdated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
 }
 
+/**
+ * Summarizes filtered analytics into metric cards.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderAnalyticsMetrics() {
   const rows = analyticsState.filteredRows;
   const totalScans = rows.reduce((sum, row) => sum + row.total, 0);
@@ -97,6 +132,11 @@ function renderAnalyticsMetrics() {
   document.getElementById('analyticsMetrics').innerHTML = metrics.map(metricCardMarkup).join('');
 }
 
+/**
+ * Renders the analytics data table for the current filtered rows.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderAnalyticsTable() {
   const tbody = document.getElementById('analyticsTableBody');
   if (!analyticsState.filteredRows.length) {
@@ -118,11 +158,21 @@ function renderAnalyticsTable() {
     .join('');
 }
 
+/**
+ * Renders the top room and top period bar chart widgets.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderTopCharts() {
   renderBarChart('topRoomsChart', aggregateRows(analyticsState.filteredRows, 'scanner_location'));
   renderBarChart('topPeriodsChart', aggregateRows(analyticsState.filteredRows, 'period'));
 }
 
+/**
+ * Renders the top student activity list for the current analytics filters.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderTopStudents() {
   const container = document.getElementById('topStudentsList');
   const byStudent = new Map();
@@ -155,6 +205,13 @@ function renderTopStudents() {
   `).join('');
 }
 
+/**
+ * Renders a simple bar chart into the given container ID.
+ * @ai-generated
+ * @param {string} targetId - ID of the DOM element to render into.
+ * @param {Array<{key:string,total:number}>} rows - The data rows to display.
+ * @returns {void}
+ */
 function renderBarChart(targetId, rows) {
   const container = document.getElementById(targetId);
   const topRows = rows.slice(0, 5);
@@ -177,6 +234,13 @@ function renderBarChart(targetId, rows) {
   `).join('');
 }
 
+/**
+ * Aggregates filtered analytics rows by the specified key.
+ * @ai-generated
+ * @param {Array<Object>} rows - The rows to aggregate.
+ * @param {string} keyName - The object key to group by.
+ * @returns {Array<{key:string,total:number}>}
+ */
 function aggregateRows(rows, keyName) {
   const totals = new Map();
   rows.forEach(row => {
@@ -188,10 +252,23 @@ function aggregateRows(rows, keyName) {
     .sort((a, b) => b.total - a.total);
 }
 
+/**
+ * Returns the top aggregated entry for a given dimension.
+ * @ai-generated
+ * @param {Array<Object>} rows - The rows to analyze.
+ * @param {string} keyName - The dimension key to rank by.
+ * @returns {{key:string|null,total:number}}
+ */
 function topEntry(rows, keyName) {
   return aggregateRows(rows, keyName)[0] || { key: null, total: 0 };
 }
 
+/**
+ * Creates the HTML markup string for a metric card.
+ * @ai-generated
+ * @param {{label:string,value:number|string,footnote:string}} metric
+ * @returns {string}
+ */
 function metricCardMarkup(metric) {
   return `
     <div class="metric-card glass-panel">
@@ -202,6 +279,12 @@ function metricCardMarkup(metric) {
   `;
 }
 
+/**
+ * Escapes a string for safe insertion into HTML.
+ * @ai-generated
+ * @param {string|number} value - The value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

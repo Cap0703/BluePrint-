@@ -1,3 +1,8 @@
+/**
+ * public/js/student_lookup.js
+ * Handles student lookup search input, queries the API, and displays student attendance history.
+ * @ai-generated
+ */
 const lookupState = {
   results: [],
   logs: [],
@@ -12,6 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+/**
+ * Performs a student search by query and loads matching student records and logs.
+ * @ai-generated
+ * @param {string} query - The search term entered by the user.
+ * @returns {Promise<void>}
+ */
 async function performLookup(query) {
   const container = document.getElementById('studentLookupResults');
   const token = localStorage.getItem('auth_token');
@@ -46,6 +57,12 @@ async function performLookup(query) {
   }
 }
 
+/**
+ * Renders the lookup results for the provided search query.
+ * @ai-generated
+ * @param {string} query - The search query used for lookup.
+ * @returns {void}
+ */
 function renderLookupResults(query) {
   const container = document.getElementById('studentLookupResults');
   const normalizedQuery = query.toLowerCase();
@@ -106,6 +123,12 @@ function renderLookupResults(query) {
   }).join('');
 }
 
+/**
+ * Groups logs into student-like records when matching the query but missing directory student entries.
+ * @ai-generated
+ * @param {string} query - Normalized query string to match against log entries.
+ * @returns {Array<Object>}
+ */
 function groupLogOnlyMatches(query) {
   const grouped = new Map();
   lookupState.logs.forEach(log => {
@@ -129,6 +152,12 @@ function groupLogOnlyMatches(query) {
   }));
 }
 
+/**
+ * Merges directory student results with log-only matches into a consolidated result list.
+ * @ai-generated
+ * @param {Array<Object>} logMatches - Students reconstructed from log entries.
+ * @returns {Array<Object>}
+ */
 function mergeStudentResults(logMatches) {
   const map = new Map();
 
@@ -156,18 +185,37 @@ function mergeStudentResults(logMatches) {
   });
 }
 
+/**
+ * Sorts log entries in descending chronological order.
+ * @ai-generated
+ * @param {Object} a - First log entry to compare.
+ * @param {Object} b - Second log entry to compare.
+ * @returns {number}
+ */
 function sortLogsDesc(a, b) {
   const left = `${a.date_scanned || ''} ${a.time_scanned || ''}`;
   const right = `${b.date_scanned || ''} ${b.time_scanned || ''}`;
   return right.localeCompare(left);
 }
 
+/**
+ * Normalizes a raw status string into a friendly label.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw status value.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').toLowerCase();
   if (value === 'on-time') return 'On Time';
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/**
+ * Escapes a value for safe insertion into HTML markup.
+ * @ai-generated
+ * @param {string|number} value - The value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

@@ -1,3 +1,8 @@
+/**
+ * public/js/room.js
+ * Loads room-specific attendance data, filters logs, and updates the room activity UI.
+ * @ai-generated
+ */
 const roomState = {
   roomName: '',
   logs: [],
@@ -7,6 +12,11 @@ const roomState = {
 
 document.addEventListener('DOMContentLoaded', initRoomPage);
 
+/**
+ * Initializes the room page by loading room logs, course assignments, and page filters.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function initRoomPage() {
   const roomName = new URLSearchParams(window.location.search).get('room_name') || 'Unknown';
   roomState.roomName = roomName;
@@ -40,6 +50,11 @@ async function initRoomPage() {
   }
 }
 
+/**
+ * Sets up room page filter controls and attaches change listeners.
+ * @ai-generated
+ * @returns {void}
+ */
 function setupRoomFilters() {
   const periodFilter = document.getElementById('roomPeriodFilter');
   const periods = [...new Set(roomState.logs.map(log => log.period).filter(Boolean))];
@@ -48,6 +63,11 @@ function setupRoomFilters() {
   document.getElementById('roomDateFilter').addEventListener('change', applyRoomFilters);
 }
 
+/**
+ * Applies selected room filters to the in-memory room log list.
+ * @ai-generated
+ * @returns {void}
+ */
 function applyRoomFilters() {
   const period = document.getElementById('roomPeriodFilter').value;
   const date = document.getElementById('roomDateFilter').value;
@@ -60,6 +80,11 @@ function applyRoomFilters() {
   renderRoomMetrics();
 }
 
+/**
+ * Renders the room page content by calling the section renderers.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomPage() {
   renderRoomDetails();
   renderRoomMetrics();
@@ -67,6 +92,11 @@ function renderRoomPage() {
   renderRoomLogs();
 }
 
+/**
+ * Renders the room detail summary and configuration information.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomDetails() {
   const matchingCourses = roomState.courses.filter(course => String(course.room) === String(roomState.roomName));
   const latestLog = roomState.logs[0];
@@ -89,6 +119,11 @@ function renderRoomDetails() {
   `).join('');
 }
 
+/**
+ * Renders metric cards summarizing current room activity and filter state.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomMetrics() {
   const logs = roomState.filteredLogs;
   const today = new Date().toISOString().split('T')[0];
@@ -104,6 +139,11 @@ function renderRoomMetrics() {
   document.getElementById('roomMetrics').innerHTML = metrics.map(metricCardMarkup).join('');
 }
 
+/**
+ * Renders recent room activity items for today.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomActivity() {
   const today = new Date().toISOString().split('T')[0];
   const activity = roomState.logs.filter(log => log.date_scanned === today).slice(0, 8);
@@ -122,6 +162,11 @@ function renderRoomActivity() {
   `).join('');
 }
 
+/**
+ * Renders the room log table using the currently filtered logs.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomLogs() {
   const container = document.getElementById('roomLogs');
   const logs = roomState.filteredLogs;
@@ -160,6 +205,12 @@ function renderRoomLogs() {
   `;
 }
 
+/**
+ * Normalizes a status value to a human-readable string.
+ * @ai-generated
+ * @param {string|undefined|null} status - The raw status value.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').toLowerCase();
   if (value === 'on-time') return 'On Time';
@@ -169,10 +220,22 @@ function normalizeStatus(status) {
   return 'Unknown';
 }
 
+/**
+ * Converts a normalized status string into a CSS-friendly class name.
+ * @ai-generated
+ * @param {string|undefined|null} status - The raw status value.
+ * @returns {string}
+ */
 function statusClass(status) {
   return normalizeStatus(status).toLowerCase().replace(/\s+/g, '-');
 }
 
+/**
+ * Returns HTML markup for a metric card.
+ * @ai-generated
+ * @param {{label:string,value:number|string,footnote:string}} metric
+ * @returns {string}
+ */
 function metricCardMarkup(metric) {
   return `
     <div class="metric-card glass-panel">
@@ -183,6 +246,12 @@ function metricCardMarkup(metric) {
   `;
 }
 
+/**
+ * Formats a date string into the user's locale date representation.
+ * @ai-generated
+ * @param {string} value - The date string to format.
+ * @returns {string}
+ */
 function formatDate(value) {
   if (!value) return 'Unknown';
   const date = new Date(value);
@@ -190,6 +259,12 @@ function formatDate(value) {
   return date.toLocaleDateString();
 }
 
+/**
+ * Escapes a string for safe HTML insertion.
+ * @ai-generated
+ * @param {string|number} value - The value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

@@ -1,3 +1,8 @@
+/**
+ * public/js/teacher_logs.js
+ * Loads teacher-specific attendance logs and renders the teacher logs page with filters.
+ * @ai-generated
+ */
 const teacherLogsState = {
   logs: [],
   filteredLogs: [],

@@ -1,9 +1,19 @@
+/**
+ * public/js/profile.js
+ * Loads the signed-in user's profile, course assignments, and attendance log summary.
+ * @ai-generated
+ */
 const profileState = {
   user: null,
   courses: [],
   logs: []
 };
 
+/**
+ * Loads profile data for the signed-in user and renders the profile page.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 document.addEventListener('DOMContentLoaded', loadProfilePage);
 
 async function loadProfilePage() {
@@ -34,6 +44,11 @@ async function loadProfilePage() {
   }
 }
 
+/**
+ * Renders the loaded user profile data and associated summaries.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderProfile() {
   const user = profileState.user;
   const assignedCourses = Array.isArray(profileState.courses) ? profileState.courses : [];
@@ -93,17 +108,35 @@ function renderProfile() {
   `).join('');*/
 }
 
+/**
+ * Normalizes a user role string to title case.
+ * @ai-generated
+ * @param {string|undefined|null} role - Raw role value.
+ * @returns {string}
+ */
 function normalizeRole(role) {
   if (!role) return 'Unknown';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+/**
+ * Normalizes an attendance status string to a readable label.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw status value.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const normalized = String(status || 'Unknown').toLowerCase();
   if (normalized === 'on-time') return 'On Time';
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+/**
+ * Returns markup for a profile metrics card.
+ * @ai-generated
+ * @param {{label:string,value:number|string,footnote:string}} metric
+ * @returns {string}
+ */
 function metricCardMarkup(metric) {
   return `
     <div class="metric-card glass-panel">
@@ -114,6 +147,12 @@ function metricCardMarkup(metric) {
   `;
 }
 
+/**
+ * Builds fetch options with authorization header for API calls.
+ * @ai-generated
+ * @param {string} token - Bearer token string.
+ * @returns {{headers:{Authorization:string}}}
+ */
 function authOptions(token) {
   return {
     headers: {
@@ -122,6 +161,11 @@ function authOptions(token) {
   };
 }
 
+/**
+ * Returns the stored auth token or redirects to login if missing.
+ * @ai-generated
+ * @returns {string|null}
+ */
 function getTokenOrRedirect() {
   const token = localStorage.getItem('auth_token');
   if (!token) {
@@ -131,6 +175,12 @@ function getTokenOrRedirect() {
   return token;
 }
 
+/**
+ * Formats a date string to local representation.
+ * @ai-generated
+ * @param {string} value - ISO date string.
+ * @returns {string}
+ */
 function formatDate(value) {
   if (!value) return 'Unknown';
   const date = new Date(value);
@@ -138,6 +188,12 @@ function formatDate(value) {
   return date.toLocaleDateString();
 }
 
+/**
+ * Escapes a given value for safe HTML insertion.
+ * @ai-generated
+ * @param {string|number} value - Value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

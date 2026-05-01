@@ -1,3 +1,8 @@
+/**
+ * public/js/map.js
+ * Handles the current class map editor, room and scanner data loading, and UI refresh logic.
+ * @ai-generated
+ */
 let deleteMode = false;
 let selectedRoomId = null;
 
@@ -22,6 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderRoomList();
 });
 
+/**
+ * Binds controls for map editing actions such as add room, save, layer navigation, and delete mode.
+ * @ai-generated
+ * @returns {void}
+ */
 function bindMapControls() {
   document.getElementById('addRoomButton').addEventListener('click', () => {
     createRoom(document.getElementById('roomName').value, getCurrentLayer());
@@ -32,6 +42,11 @@ function bindMapControls() {
   document.getElementById('downLayerButton').addEventListener('click', downLayer);
 }
 
+/**
+ * Reloads the current map layer display and updates visible room elements.
+ * @ai-generated
+ * @returns {void}
+ */
 function reloadLevel() {
   const layerEl = document.getElementById('currentMapLayer');
   const z = parseInt(layerEl.dataset.z || '0', 10);
@@ -40,22 +55,42 @@ function reloadLevel() {
   updateLayerVisibility();
 }
 
+/**
+ * Moves the map view to the next higher layer.
+ * @ai-generated
+ * @returns {void}
+ */
 function upLayer() {
   const layerEl = document.getElementById('currentMapLayer');
   layerEl.dataset.z = String((parseInt(layerEl.dataset.z || '0', 10)) + 1);
   reloadLevel();
 }
 
+/**
+ * Moves the map view to the next lower layer.
+ * @ai-generated
+ * @returns {void}
+ */
 function downLayer() {
   const layerEl = document.getElementById('currentMapLayer');
   layerEl.dataset.z = String((parseInt(layerEl.dataset.z || '0', 10)) - 1);
   reloadLevel();
 }
 
+/**
+ * Returns the currently selected map layer index.
+ * @ai-generated
+ * @returns {number}
+ */
 function getCurrentLayer() {
   return parseInt(document.getElementById('currentMapLayer').dataset.z || '0', 10);
 }
 
+/**
+ * Updates visibility for rooms based on the active map layer.
+ * @ai-generated
+ * @returns {void}
+ */
 function updateLayerVisibility() {
   const currentLayer = getCurrentLayer();
   document.querySelectorAll('.room').forEach(room => {
@@ -65,11 +100,23 @@ function updateLayerVisibility() {
   });
 }
 
+/**
+ * Toggles delete mode for room removal.
+ * @ai-generated
+ * @returns {void}
+ */
 function toggleDeleteMode() {
   deleteMode = !deleteMode;
   document.getElementById('deleteModeBtn').textContent = deleteMode ? 'Exit Delete Mode' : 'Delete Mode';
 }
 
+/**
+ * Creates a new draggable room block on the map.
+ * @ai-generated
+ * @param {string} name - Room label.
+ * @param {number} z - Map layer index.
+ * @returns {void}
+ */
 function createRoom(name, z) {
   if (!name || !name.trim()) {
     alert('Please enter a room name.');
@@ -93,6 +140,12 @@ function createRoom(name, z) {
   document.getElementById('roomName').value = '';
 }
 
+/**
+ * Renders a room element into the map canvas.
+ * @ai-generated
+ * @param {Object} room - Room data object.
+ * @returns {void}
+ */
 function renderRoom(room) {
   const map = document.getElementById('mapCanvas');
   const div = document.createElement('div');
@@ -135,6 +188,12 @@ function renderRoom(room) {
   updateLayerVisibility();
 }
 
+/**
+ * Builds HTML markup for a room tile tooltip and summary.
+ * @ai-generated
+ * @param {Object} room - Room data object.
+ * @returns {string}
+ */
 function roomMarkup(room) {
   const todayStudents = getTodayRoomStudents(room.name);
   const currentStudents = getCurrentRoomStudents(room.name);
@@ -180,6 +239,13 @@ function roomMarkup(room) {
   `;
 }
 
+/**
+ * Enables drag behavior for a room element.
+ * @ai-generated
+ * @param {HTMLElement} el - Room DOM element.
+ * @param {Object} room - Room data model to update while dragging.
+ * @returns {void}
+ */
 function enableRoomDrag(el, room) {
   let offsetX = 0;
   let offsetY = 0;
@@ -214,6 +280,11 @@ function enableRoomDrag(el, room) {
   });
 }
 
+/**
+ * Renders scanner dots onto the map canvas.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderScanners() {
   const map = document.getElementById('mapCanvas');
   mapData.scanners.forEach(scanner => {
@@ -228,6 +299,13 @@ function renderScanners() {
   });
 }
 
+/**
+ * Enables drag behavior for a scanner dot.
+ * @ai-generated
+ * @param {HTMLElement} el - Scanner DOM element.
+ * @param {Object} scanner - Scanner data model to update while dragging.
+ * @returns {void}
+ */
 function enableScannerDrag(el, scanner) {
   let dragging = false;
   el.addEventListener('mousedown', event => {
@@ -247,6 +325,11 @@ function enableScannerDrag(el, scanner) {
   });
 }
 
+/**
+ * Saves the current map layout to the backend.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function saveMap() {
   const token = localStorage.getItem('auth_token');
   try {
@@ -266,6 +349,11 @@ async function saveMap() {
   }
 }
 
+/**
+ * Loads the saved map layout from the backend.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function loadMap() {
   const token = localStorage.getItem('auth_token');
   const canvas = document.getElementById('mapCanvas');
@@ -286,6 +374,11 @@ async function loadMap() {
   }
 }
 
+/**
+ * Loads supporting context such as logs, courses, and calendar data for map rendering.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function loadMapContext() {
   const token = localStorage.getItem('auth_token');
   try {
@@ -302,6 +395,12 @@ async function loadMapContext() {
   }
 }
 
+/**
+ * Refreshes the HTML for a room card after room data changes.
+ * @ai-generated
+ * @param {Object} room - Room data object.
+ * @returns {void}
+ */
 function refreshRoomCard(room) {
   const roomEl = document.querySelector(`.room[data-id="${room.id}"]`);
   if (roomEl) {
@@ -309,6 +408,11 @@ function refreshRoomCard(room) {
   }
 }
 
+/**
+ * Renders the selectable room list sidebar.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderRoomList() {
   const container = document.getElementById('mapRoomList');
   if (!mapData.rooms.length) {
@@ -333,6 +437,11 @@ function renderRoomList() {
   });
 }
 
+/**
+ * Renders detail information for the currently selected room.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderSelectedRoom() {
   const container = document.getElementById('selectedRoomDetails');
   const room = mapData.rooms.find(entry => entry.id === selectedRoomId);
@@ -368,6 +477,11 @@ function renderSelectedRoom() {
   `;
 }
 
+/**
+ * Renders map dashboard metrics such as rooms, scanners, and attendance counts.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderMapMetrics() {
   const currentPeriod = getCurrentPeriodTitle();
   const currentAttendanceRooms = new Set(
@@ -412,6 +526,12 @@ function renderMapMetrics() {
   `).join('');
 }
 
+/**
+ * Returns the set of students seen today in the given room.
+ * @ai-generated
+ * @param {string} roomName - Room name to query.
+ * @returns {Array<string>}
+ */
 function getTodayRoomStudents(roomName) {
   const today = getTodayDate();
   return [...new Set(
@@ -422,6 +542,12 @@ function getTodayRoomStudents(roomName) {
   )];
 }
 
+/**
+ * Returns the set of students currently associated with the given room for the active period.
+ * @ai-generated
+ * @param {string} roomName - Room name to query.
+ * @returns {Array<string>}
+ */
 function getCurrentRoomStudents(roomName) {
   const currentPeriod = getCurrentPeriodTitle();
   if (!currentPeriod) return [];
@@ -438,6 +564,11 @@ function getCurrentRoomStudents(roomName) {
   )];
 }
 
+/**
+ * Returns the current period title if a calendar event is active.
+ * @ai-generated
+ * @returns {string|null}
+ */
 function getCurrentPeriodTitle() {
   const events = mapContext.calendar?.events || [];
   if (!events.length) return null;
@@ -451,6 +582,12 @@ function getCurrentPeriodTitle() {
   return active?.title || null;
 }
 
+/**
+ * Converts a time string into minutes past midnight.
+ * @ai-generated
+ * @param {string} value - Time value in HH:MM format.
+ * @returns {number|null}
+ */
 function timeToMinutes(value) {
   if (!value) return null;
   const [hours, minutes] = String(value).split(':').map(Number);
@@ -458,6 +595,12 @@ function timeToMinutes(value) {
   return hours * 60 + minutes;
 }
 
+/**
+ * Normalizes room attendance status labels.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw status value.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').trim().toLowerCase();
   if (value === 'on-time' || value === 'on time' || value === 'ontime') return 'On Time';
@@ -467,12 +610,23 @@ function normalizeStatus(status) {
   return 'Unknown';
 }
 
+/**
+ * Returns today's date string in local YYYY-MM-DD format.
+ * @ai-generated
+ * @returns {string}
+ */
 function getTodayDate() {
   const now = new Date();
   const offset = now.getTimezoneOffset();
   return new Date(now.getTime() - offset * 60000).toISOString().split('T')[0];
 }
 
+/**
+ * Escapes values for safe HTML rendering.
+ * @ai-generated
+ * @param {string|number} value - The value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

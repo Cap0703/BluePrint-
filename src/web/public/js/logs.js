@@ -1,13 +1,28 @@
+/**
+ * public/js/logs.js
+ * Manages attendance log creation, CSV uploads, filters, and master log rendering.
+ * @ai-generated
+ */
 const logState = {
   allLogs: [],
   filteredLogs: []
 };
 
+/**
+ * Initializes the master logs page by binding UI actions and loading logs.
+ * @ai-generated
+ * @returns {void}
+ */
 document.addEventListener('DOMContentLoaded', () => {
   bindLogUi();
   fetchLogs();
 });
 
+/**
+ * Attaches event listeners for log page controls, filters, and CSV/PDF exports.
+ * @ai-generated
+ * @returns {void}
+ */
 function bindLogUi() {
   const modal = document.getElementById('logModal');
   const openBtn = document.getElementById('addLogButton');
@@ -42,6 +57,11 @@ function bindLogUi() {
   csvUploadInput.addEventListener('change', handleCsvUpload);
 }
 
+/**
+ * Fetches attendance logs and initializes log filters and display components.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function fetchLogs() {
   const token = localStorage.getItem('auth_token');
   const authResponse = await fetch("/api/auth/me", {
@@ -74,18 +94,33 @@ async function fetchLogs() {
   }
 }
 
+/**
+ * Populates the period select filter from available log data.
+ * @ai-generated
+ * @returns {void}
+ */
 function populateLogPeriods() {
   const select = document.getElementById('logPeriodFilter');
   const periods = [...new Set(logState.allLogs.map(log => log.period).filter(Boolean))];
   select.innerHTML = '<option value="">All periods</option>' + periods.map(period => `<option value="${escapeHtml(period)}">${escapeHtml(period)}</option>`).join('');
 }
 
+/**
+ * Populates the room select filter from available log data.
+ * @ai-generated
+ * @returns {void}
+ */
 function populateLogRooms() {
   const select = document.getElementById('logRoomFilter');
   const rooms = [...new Set(logState.allLogs.map(log => log.scanner_location).filter(Boolean))];
   select.innerHTML = '<option value="">All rooms</option>' + rooms.map(room => `<option value="${escapeHtml(room)}">${escapeHtml(room)}</option>`).join('');
 }
 
+/**
+ * Configures the date filter input using available log dates.
+ * @ai-generated
+ * @returns {void}
+ */
 function populateLogDates() {
   const input = document.getElementById('logDateFilter');
   const dates = [...new Set(logState.allLogs.map(log => normalizeDateValue(log.date_scanned)).filter(Boolean))];
@@ -94,6 +129,11 @@ function populateLogDates() {
   }
 }
 
+/**
+ * Filters logs by search, status, period, room, and date criteria.
+ * @ai-generated
+ * @returns {void}
+ */
 function applyLogFilters() {
   const search = document.getElementById('logSearch').value.trim().toLowerCase();
   const status = document.getElementById('logStatusFilter').value;
@@ -116,6 +156,11 @@ function applyLogFilters() {
   renderLogMetrics();
 }
 
+/**
+ * Renders metric cards summarizing the current filtered log set.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderLogMetrics() {
   const logs = logState.filteredLogs;
   const metrics = [
@@ -128,6 +173,11 @@ function renderLogMetrics() {
   document.getElementById('logMetrics').innerHTML = metrics.map(metricCardMarkup).join('');
 }
 
+/**
+ * Renders the filtered log table and attaches row action handlers.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderLogs() {
   const container = document.getElementById('logsContent');
   const logs = logState.filteredLogs;
@@ -176,6 +226,12 @@ function renderLogs() {
   });
 }
 
+/**
+ * Submits the log form to create a new attendance log entry.
+ * @ai-generated
+ * @param {Event} event - Form submit event.
+ * @returns {Promise<void>}
+ */
 async function submitLogForm(event) {
   event.preventDefault();
   const token = localStorage.getItem('auth_token');
@@ -215,6 +271,12 @@ async function submitLogForm(event) {
   }
 }
 
+/**
+ * Deletes a log entry by ID after user confirmation, then refreshes the log list.
+ * @ai-generated
+ * @param {string|number} id - The ID of the log to delete.
+ * @returns {Promise<void>}
+ */
 async function deleteLog(id) {
   if (!confirm('Delete this log entry?')) return;
   const token = localStorage.getItem('auth_token');
@@ -235,14 +297,31 @@ async function deleteLog(id) {
   }
 }
 
+/**
+ * Requests the server to assign periods to logs and refreshes the view on success.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function assignPeriodsToLogs() {
   await postLogMaintenance('/api/logs/assign-periods', 'Periods assigned successfully.');
 }
 
+/**
+ * Requests the server to assign statuses to logs and refreshes the view on success.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function assignStatusesToLogs() {
   await postLogMaintenance('/api/logs/assign-statuses', 'Statuses assigned successfully.');
 }
 
+/**
+ * Sends a log maintenance request to a server endpoint and handles the response.
+ * @ai-generated
+ * @param {string} url - Endpoint URL for the maintenance operation.
+ * @param {string} successMessage - Message shown when the operation succeeds.
+ * @returns {Promise<void>}
+ */
 async function postLogMaintenance(url, successMessage) {
   const token = localStorage.getItem('auth_token');
   try {
@@ -265,6 +344,12 @@ async function postLogMaintenance(url, successMessage) {
   }
 }
 
+/**
+ * Normalizes a raw status string into a consistent display label.
+ * @ai-generated
+ * @param {string} status - The raw status value read from a log.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').toLowerCase();
   if (value === 'on-time') return 'On Time';
@@ -276,10 +361,22 @@ function normalizeStatus(status) {
   return 'Unknown';
 }
 
+/**
+ * Converts a normalized status label into a CSS-friendly class name.
+ * @ai-generated
+ * @param {string} status - The raw status value.
+ * @returns {string}
+ */
 function statusClass(status) {
   return normalizeStatus(status).toLowerCase().replace(/\s+/g, '-');
 }
 
+/**
+ * Returns HTML markup for a metric card shown in the logs dashboard.
+ * @ai-generated
+ * @param {{label:string,value:number,footnote:string}} metric - Metric data to render.
+ * @returns {string}
+ */
 function metricCardMarkup(metric) {
   return `
     <div class="metric-card glass-panel">
@@ -290,6 +387,12 @@ function metricCardMarkup(metric) {
   `;
 }
 
+/**
+ * Escapes HTML special characters to protect the log UI from injection.
+ * @ai-generated
+ * @param {*} value - Value to escape for HTML output.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -299,6 +402,11 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Initiates download of the currently filtered logs as a CSV file.
+ * @ai-generated
+ * @returns {void}
+ */
 function getLogsCsv() {
   if (!logState.filteredLogs.length) {
     alert('No logs are available to export.');
@@ -322,6 +430,11 @@ function getLogsCsv() {
   }
 }
 
+/**
+ * Generates a printable PDF-friendly page for the current filtered logs.
+ * @ai-generated
+ * @returns {void}
+ */
 function downloadLogsPdf() {
   const logs = logState.filteredLogs;
   if (!logs.length) {
@@ -623,6 +736,12 @@ function downloadLogsPdf() {
   }, 250);
 }
 
+/**
+ * Converts an array of log objects into CSV formatted text.
+ * @ai-generated
+ * @param {Array<object>} logs - The log entries to serialize.
+ * @returns {string}
+ */
 function convertLogsToCsv(logs) {
   const headers = [
     'ID',
@@ -654,12 +773,23 @@ function convertLogsToCsv(logs) {
     .join('\n');
 }
 
+/**
+ * Escapes a value for safe inclusion in a CSV row.
+ * @ai-generated
+ * @param {*} value - The value to escape.
+ * @returns {string}
+ */
 function escapeCsvValue(value) {
   const normalized = value === undefined || value === null ? '' : String(value);
   if (!/[",\n\r]/.test(normalized)) return normalized;
   return `"${normalized.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Downloads a sample logs CSV template to guide bulk uploads.
+ * @ai-generated
+ * @returns {void}
+ */
 function downloadLogsTemplate() {
   downloadCsvRows([
     ['Date Scanned', 'Time Scanned', 'Student ID', 'First Name', 'Last Name', 'Period', 'Scanner Location', 'Scanner ID', 'Status'],
@@ -667,6 +797,13 @@ function downloadLogsTemplate() {
   ], 'master_logs_template.csv');
 }
 
+/**
+ * Creates and downloads a CSV file from row arrays.
+ * @ai-generated
+ * @param {Array<Array<string>>} rows - Array of CSV rows.
+ * @param {string} fileName - Name of the downloaded file.
+ * @returns {void}
+ */
 function downloadCsvRows(rows, fileName) {
   const csvContent = rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -680,6 +817,13 @@ function downloadCsvRows(rows, fileName) {
   window.URL.revokeObjectURL(url);
 }
 
+/**
+ * Builds an export filename that includes active filter values.
+ * @ai-generated
+ * @param {string} prefix - Export file prefix.
+ * @param {string} extension - File extension without the leading dot.
+ * @returns {string}
+ */
 function buildExportFileName(prefix, extension) {
   const filters = getActiveFilters();
   const segments = [prefix];
@@ -689,6 +833,11 @@ function buildExportFileName(prefix, extension) {
   return `${segments.join('_')}.${extension}`;
 }
 
+/**
+ * Reads the current active log filter values from the DOM.
+ * @ai-generated
+ * @returns {{period:string,room:string,date:string}}
+ */
 function getActiveFilters() {
   return {
     period: document.getElementById('logPeriodFilter').value,
@@ -697,6 +846,11 @@ function getActiveFilters() {
   };
 }
 
+/**
+ * Builds a summary of active filters for display in export headers.
+ * @ai-generated
+ * @returns {Array<string>}
+ */
 function getActiveFilterSummary() {
   const filters = getActiveFilters();
   const summary = [];
@@ -706,10 +860,21 @@ function getActiveFilterSummary() {
   return summary;
 }
 
+/**
+ * Normalizes a date field value for comparison and export.
+ * @ai-generated
+ * @param {*} value - Raw date value.
+ * @returns {string}
+ */
 function normalizeDateValue(value) {
   return String(value || '').trim();
 }
 
+/**
+ * Returns today's date in YYYY-MM-DD format for default log entries.
+ * @ai-generated
+ * @returns {string}
+ */
 function getLocalDateString() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Los_Angeles',
@@ -719,6 +884,12 @@ function getLocalDateString() {
   }).format(new Date());
 }
 
+/**
+ * Converts a string into a URL-/filename-safe slug.
+ * @ai-generated
+ * @param {*} value - Value to convert into a slug.
+ * @returns {string}
+ */
 function slugify(value) {
   return String(value || '')
     .trim()
@@ -727,6 +898,12 @@ function slugify(value) {
     .replace(/^-+|-+$/g, '') || 'all';
 }
 
+/**
+ * Handles CSV upload, parses rows, normalizes them, and submits bulk logs.
+ * @ai-generated
+ * @param {Event} event - File input change event.
+ * @returns {Promise<void>}
+ */
 async function handleCsvUpload(event) {
   const [file] = event.target.files || [];
   if (!file) return;
@@ -773,6 +950,12 @@ async function handleCsvUpload(event) {
   }
 }
 
+/**
+ * Parses CSV text into an array of normalized row objects.
+ * @ai-generated
+ * @param {string} text - Raw CSV file contents.
+ * @returns {Array<object>}
+ */
 function parseCsv(text) {
   const rows = [];
   let current = '';
@@ -833,6 +1016,12 @@ function parseCsv(text) {
   });
 }
 
+/**
+ * Maps a parsed CSV row object to the log object structure expected by the server.
+ * @ai-generated
+ * @param {object} row - Parsed CSV row keyed by normalized headers.
+ * @returns {object}
+ */
 function mapCsvRowToLog(row) {
   return {
     first_name: pickCsvValue(row, ['first_name', 'firstname', 'first']),
@@ -847,6 +1036,13 @@ function mapCsvRowToLog(row) {
   };
 }
 
+/**
+ * Returns the first non-empty value from a CSV row using a list of candidate header keys.
+ * @ai-generated
+ * @param {object} row - Parsed CSV row object.
+ * @param {Array<string>} keys - Candidate header names.
+ * @returns {string}
+ */
 function pickCsvValue(row, keys) {
   for (const key of keys) {
     if (row[key]) return row[key];
@@ -854,6 +1050,12 @@ function pickCsvValue(row, keys) {
   return '';
 }
 
+/**
+ * Normalizes a CSV header string into a safe internal key.
+ * @ai-generated
+ * @param {string} value - Raw header label.
+ * @returns {string}
+ */
 function normalizeCsvHeader(value) {
   return String(value || '')
     .trim()
@@ -862,16 +1064,35 @@ function normalizeCsvHeader(value) {
     .replace(/^_+|_+$/g, '');
 }
 
+/**
+ * Sorts logs by timestamp in descending chronological order.
+ * @ai-generated
+ * @param {Array<object>} logs - Array of log entries.
+ * @returns {Array<object>}
+ */
 function sortLogsChronologically(logs) {
   return [...logs].sort(compareLogsChronologically);
 }
 
+/**
+ * Compares two logs by timestamp and fallback ID for stable sort order.
+ * @ai-generated
+ * @param {object} left - First log to compare.
+ * @param {object} right - Second log to compare.
+ * @returns {number}
+ */
 function compareLogsChronologically(left, right) {
   const timestampDiff = getLogTimestampValue(right) - getLogTimestampValue(left);
   if (timestampDiff !== 0) return timestampDiff;
   return Number(right?.id || 0) - Number(left?.id || 0);
 }
 
+/**
+ * Converts a log's date and time fields into a numeric timestamp.
+ * @ai-generated
+ * @param {object} log - Log object with date_scanned and time_scanned fields.
+ * @returns {number}
+ */
 function getLogTimestampValue(log) {
   const date = String(log?.date_scanned || '').trim();
   const time = normalizeLogTime(log?.time_scanned);
@@ -880,6 +1101,12 @@ function getLogTimestampValue(log) {
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
 }
 
+/**
+ * Normalizes a time string into 24-hour HH:MM:SS format.
+ * @ai-generated
+ * @param {*} value - Raw time string value.
+ * @returns {string}
+ */
 function normalizeLogTime(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';

@@ -1,3 +1,8 @@
+/**
+ * public/js/dashboard.js
+ * Loads dashboard data, handles filters, and renders attendance summary widgets.
+ * @ai-generated
+ */
 const dashboardState = {
   token: localStorage.getItem('auth_token'),
   user: null,
@@ -13,6 +18,11 @@ const dashboardState = {
   }
 };
 
+/**
+ * Initializes the dashboard by loading user and attendance data, binding filters, and rendering the UI.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 document.addEventListener('DOMContentLoaded', initDashboard);
 
 async function initDashboard() {
@@ -47,6 +57,11 @@ async function initDashboard() {
   }
 }
 
+/**
+ * Attaches event handlers to dashboard filter controls.
+ * @ai-generated
+ * @returns {void}
+ */
 function bindDashboardFilters() {
   document.getElementById('dashboardSearch').addEventListener('input', event => {
     dashboardState.filters.search = event.target.value.trim().toLowerCase();
@@ -64,6 +79,11 @@ function bindDashboardFilters() {
   });
 }
 
+/**
+ * Populates the class filter options for the dashboard.
+ * @ai-generated
+ * @returns {void}
+ */
 function populateDashboardFilters() {
   const select = document.getElementById('dashboardClassFilter');
   const courseOptions = dashboardState.scopedCourses
@@ -79,6 +99,11 @@ function populateDashboardFilters() {
     .join('');
 }
 
+/**
+ * Renders all dashboard sections based on current filters and scoped data.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderDashboard() {
   const filteredLogs = filterLogs();
   const selectedDateLogs = filteredLogs.filter(log => normalizeDate(log.date_scanned) === dashboardState.filters.date);
@@ -99,6 +124,11 @@ function renderDashboard() {
   renderRoleFocus(selectedDateLogs, allSelectedScopeLogs);
 }
 
+/**
+ * Renders the dashboard header and contextual role labels.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderHeader() {
   const user = dashboardState.user;
   const isAdmin = user.role === 'administrator';
@@ -113,6 +143,12 @@ function renderHeader() {
     : 'Keep your classes moving with today\'s attendance snapshot, quick actions, and a focused list of students who need follow-up.';
 }
 
+/**
+ * Renders the summary cards and attendance statistics for the selected day.
+ * @ai-generated
+ * @param {Array<Object>} dayLogs - Logs for the selected date.
+ * @returns {void}
+ */
 function renderSummary(dayLogs) {
   const counts = countStatuses(dayLogs);
   const presentCount = counts['On Time'];
@@ -159,6 +195,12 @@ function renderSummary(dayLogs) {
   });
 }
 
+/**
+ * Updates the attendance donut chart based on count breakdowns.
+ * @ai-generated
+ * @param {{present:number,absent:number,tardy:number,excused:number}} counts
+ * @returns {void}
+ */
 function renderAttendanceDonut(counts) {
   const total = counts.present + counts.absent + counts.tardy + counts.excused;
   const presentPct = total ? (counts.present / total) * 100 : 0;
@@ -176,6 +218,11 @@ function renderAttendanceDonut(counts) {
   )`;
 }
 
+/**
+ * Renders the quick action tiles for dashboard navigation.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderQuickActions() {
   const isAdmin = dashboardState.user.role === 'administrator';
   const actions = [
@@ -214,6 +261,13 @@ function renderQuickActions() {
   `).join('');
 }
 
+/**
+ * Renders alert cards for attendance flags and concerns.
+ * @ai-generated
+ * @param {Array<Object>} dayLogs - Logs for the selected date.
+ * @param {Array<Object>} scopedLogs - Logs within the current dashboard scope.
+ * @returns {void}
+ */
 function renderAlerts(dayLogs, scopedLogs) {
   const excessiveAbsences = topAbsenceCounts(scopedLogs).filter(entry => entry.total > 5).slice(0, 5);
   const consecutiveAbsences = findConsecutiveAbsenceStreaks(scopedLogs).slice(0, 5);
@@ -261,12 +315,24 @@ function renderAlerts(dayLogs, scopedLogs) {
   `).join('');
 }
 
+/**
+ * Renders dashboard trend visuals for attendance patterns.
+ * @ai-generated
+ * @param {Array<Object>} scopedLogs - Logs within the current scope.
+ * @returns {void}
+ */
 function renderTrends(scopedLogs) {
   renderWeeklyTrend(scopedLogs);
   renderBarChart('absentClassesChart', aggregateFilteredLogs(scopedLogs.filter(log => normalizeStatus(log.status) === 'Absent'), log => classLabelFromLog(log)));
   renderBarChart('weekdayPatternChart', aggregateFilteredLogs(scopedLogs, log => weekdayLabel(log.date_scanned)));
 }
 
+/**
+ * Renders the weekly attendance trend chart.
+ * @ai-generated
+ * @param {Array<Object>} scopedLogs - Logs within the current scope.
+ * @returns {void}
+ */
 function renderWeeklyTrend(scopedLogs) {
   const target = document.getElementById('weeklyTrendChart');
   const lastSevenDates = getTrailingDates(dashboardState.filters.date, 7);
@@ -294,6 +360,12 @@ function renderWeeklyTrend(scopedLogs) {
   `).join('');
 }
 
+/**
+ * Renders the recent activity feed for the selected day.
+ * @ai-generated
+ * @param {Array<Object>} dayLogs - Logs for the selected date.
+ * @returns {void}
+ */
 function renderActivity(dayLogs) {
   const feed = document.getElementById('activityFeed');
   const recentLogs = [...dayLogs]
@@ -315,6 +387,12 @@ function renderActivity(dayLogs) {
   `).join('');
 }
 
+/**
+ * Renders a snapshot of classes and attendance completion status.
+ * @ai-generated
+ * @param {Array<Object>} dayLogs - Logs for the selected date.
+ * @returns {void}
+ */
 function renderClassSnapshot(dayLogs) {
   const target = document.getElementById('classSnapshotList');
   const snapshotCourses = dashboardState.scopedCourses.length
@@ -372,6 +450,13 @@ function renderFilterSummary(dayLogs, scopedLogs) {
   document.getElementById('filterSummary').textContent = `${dayLogs.length} visible records on ${friendlyDate(dashboardState.filters.date)} with ${filterBits.join(', ')}. ${scopedLogs.length} total records remain in the broader filtered scope.`;
 }
 
+/**
+ * Renders role-specific focus cards for administrators or teachers.
+ * @ai-generated
+ * @param {Array<Object>} dayLogs - Logs for the selected date.
+ * @param {Array<Object>} scopedLogs - Logs within the broader dashboard scope.
+ * @returns {void}
+ */
 function renderRoleFocus(dayLogs, scopedLogs) {
   const isAdmin = dashboardState.user.role === 'administrator';
   const title = document.getElementById('roleFocusTitle');
@@ -401,6 +486,11 @@ function renderRoleFocus(dayLogs, scopedLogs) {
   ].join('');
 }
 
+/**
+ * Displays an error state when the dashboard fails to load.
+ * @ai-generated
+ * @returns {void}
+ */
 function renderDashboardError() {
   document.getElementById('summaryHeadline').textContent = 'The dashboard could not load right now.';
   document.getElementById('summaryNarrative').textContent = 'Please refresh the page or check that the server is available.';
@@ -417,6 +507,11 @@ function renderDashboardError() {
   document.getElementById('roleFocusList').innerHTML = '<div class="empty-state">Role focus unavailable.</div>';
 }
 
+/**
+ * Filters logs by the selected class and search term.
+ * @ai-generated
+ * @returns {Array<Object>}
+ */
 function filterLogs() {
   return dashboardState.scopedLogs.filter(log => {
     const matchesClass = !dashboardState.filters.classKey || logCourseKey(log) === dashboardState.filters.classKey;
@@ -424,20 +519,43 @@ function filterLogs() {
   });
 }
 
+/**
+ * Tests whether a log entry matches the filtered search term.
+ * @ai-generated
+ * @param {Object} log - Log entry object.
+ * @param {string} search - Search text.
+ * @returns {boolean}
+ */
 function matchesLogSearch(log, search) {
   if (!search) return true;
   const haystack = `${log.first_name || ''} ${log.last_name || ''} ${log.student_id || ''}`.toLowerCase();
   return haystack.includes(search);
 }
 
+/**
+ * Returns the scoped course list for dashboard filtering.
+ * @ai-generated
+ * @returns {Array<Object>}
+ */
 function scopeCourses() {
   return [...dashboardState.courses];
 }
 
+/**
+ * Returns the scoped log list for dashboard filtering.
+ * @ai-generated
+ * @returns {Array<Object>}
+ */
 function scopeLogs() {
   return [...dashboardState.logs];
 }
 
+/**
+ * Counts attendance statuses for a set of log entries.
+ * @ai-generated
+ * @param {Array<Object>} logs - Log entries to count.
+ * @returns {{'On Time':number,Late:number,Absent:number,Excused:number,Unknown:number}}
+ */
 function countStatuses(logs) {
   return logs.reduce((counts, log) => {
     counts[normalizeStatus(log.status)] += 1;
@@ -451,6 +569,12 @@ function countStatuses(logs) {
   });
 }
 
+/**
+ * Computes top students by absence count.
+ * @ai-generated
+ * @param {Array<Object>} logs - Log entries to evaluate.
+ * @returns {Array<{name:string,total:number}>}
+ */
 function topAbsenceCounts(logs) {
   const totals = new Map();
   logs
@@ -465,6 +589,12 @@ function topAbsenceCounts(logs) {
   return Array.from(totals.values()).sort((a, b) => b.total - a.total);
 }
 
+/**
+ * Finds consecutive absence streaks across students.
+ * @ai-generated
+ * @param {Array<Object>} logs - Absence log entries.
+ * @returns {Array<{name:string,streak:number,lastDate:string}>}
+ */
 function findConsecutiveAbsenceStreaks(logs) {
   const byStudent = new Map();
   logs
@@ -498,6 +628,13 @@ function findConsecutiveAbsenceStreaks(logs) {
   }).filter(entry => entry.streak > 1).sort((a, b) => b.streak - a.streak);
 }
 
+/**
+ * Renders a simple horizontal bar chart for the target container.
+ * @ai-generated
+ * @param {string} targetId - DOM element ID.
+ * @param {Array<{key:string,total:number}>} rows - Data rows.
+ * @returns {void}
+ */
 function renderBarChart(targetId, rows) {
   const container = document.getElementById(targetId);
   const topRows = rows.slice(0, 5);
@@ -521,6 +658,13 @@ function renderBarChart(targetId, rows) {
   `).join('');
 }
 
+/**
+ * Aggregates logs by a key builder function.
+ * @ai-generated
+ * @param {Array<Object>} logs - Log entries.
+ * @param {function(Object):string} keyBuilder - Function that returns a grouping key.
+ * @returns {Array<{key:string,total:number}>}
+ */
 function aggregateFilteredLogs(logs, keyBuilder) {
   const totals = new Map();
   logs.forEach(log => {
@@ -533,6 +677,12 @@ function aggregateFilteredLogs(logs, keyBuilder) {
     .sort((a, b) => b.total - a.total);
 }
 
+/**
+ * Collects unique class keys from log entries.
+ * @ai-generated
+ * @param {Array<Object>} logs - Log entries.
+ * @returns {Array<{key:string,label:string,room:string,period:string}>}
+ */
 function uniqueCourseKeys(logs) {
   const map = new Map();
   logs.forEach(log => {
@@ -548,31 +698,73 @@ function uniqueCourseKeys(logs) {
   return Array.from(map.values());
 }
 
+/**
+ * Builds a stable key string for a course object.
+ * @ai-generated
+ * @param {Object} course - Course object with room and period.
+ * @returns {string}
+ */
 function courseKey(course) {
   return `${course.room || 'Unknown room'}__${course.period || 'Unassigned'}`;
 }
 
+/**
+ * Builds a class key string from a log entry.
+ * @ai-generated
+ * @param {Object} log - Log entry object.
+ * @returns {string}
+ */
 function logCourseKey(log) {
   return `${log.scanner_location || 'Unknown room'}__${log.period || 'Unassigned'}`;
 }
 
+/**
+ * Returns a human-readable class label from a log entry.
+ * @ai-generated
+ * @param {Object} log - Log entry object.
+ * @returns {string}
+ */
 function classLabelFromLog(log) {
   return `${log.scanner_location || 'Unknown room'} | ${log.period || 'Unassigned'}`;
 }
 
+/**
+ * Converts a class key string into a readable class label.
+ * @ai-generated
+ * @param {string} key - Class key.
+ * @returns {string}
+ */
 function classLabelFromKey(key) {
   return key.replace('__', ' | ');
 }
 
+/**
+ * Returns the student display name from a log entry.
+ * @ai-generated
+ * @param {Object} log - Log entry object.
+ * @returns {string}
+ */
 function studentName(log) {
   const fullName = `${log.first_name || ''} ${log.last_name || ''}`.trim();
   return fullName || log.student_id || 'Unknown student';
 }
 
+/**
+ * Counts unique students across log entries.
+ * @ai-generated
+ * @param {Array<Object>} logs - Log entries.
+ * @returns {number}
+ */
 function uniqueStudentCount(logs) {
   return new Set(logs.map(log => log.student_id || studentName(log))).size;
 }
 
+/**
+ * Normalizes an attendance status value into a standardized label.
+ * @ai-generated
+ * @param {string|undefined|null} status - Raw attendance status.
+ * @returns {string}
+ */
 function normalizeStatus(status) {
   const value = String(status || 'Unknown').trim().toLowerCase();
   if (value === 'on-time' || value === 'on time' || value === 'ontime') return 'On Time';
@@ -582,23 +774,46 @@ function normalizeStatus(status) {
   return 'Unknown';
 }
 
+/**
+ * Returns a weekday label for a date string.
+ * @ai-generated
+ * @param {string} date - Date string.
+ * @returns {string}
+ */
 function weekdayLabel(date) {
   if (!date) return 'Unknown';
   const parsed = new Date(`${normalizeDate(date)}T00:00:00`);
   return parsed.toLocaleDateString(undefined, { weekday: 'short' });
 }
 
+/**
+ * Returns the local date string in YYYY-MM-DD format.
+ * @ai-generated
+ * @returns {string}
+ */
 function localDateString() {
   const now = new Date();
   const offset = now.getTimezoneOffset();
   return new Date(now.getTime() - offset * 60000).toISOString().split('T')[0];
 }
 
+/**
+ * Normalizes a date string to YYYY-MM-DD format.
+ * @ai-generated
+ * @param {string} date - Date value.
+ * @returns {string}
+ */
 function normalizeDate(date) {
   if (!date) return '';
   return String(date).slice(0, 10);
 }
 
+/**
+ * Formats a date into a more readable friendly date label.
+ * @ai-generated
+ * @param {string} date - Date string.
+ * @returns {string}
+ */
 function friendlyDate(date) {
   if (!date) return 'Unknown date';
   return new Date(`${normalizeDate(date)}T00:00:00`).toLocaleDateString(undefined, {
@@ -608,6 +823,12 @@ function friendlyDate(date) {
   });
 }
 
+/**
+ * Formats a date into a short month/day label.
+ * @ai-generated
+ * @param {string} date - Date string.
+ * @returns {string}
+ */
 function shortDate(date) {
   if (!date) return '';
   return new Date(`${normalizeDate(date)}T00:00:00`).toLocaleDateString(undefined, {
@@ -616,6 +837,12 @@ function shortDate(date) {
   });
 }
 
+/**
+ * Formats a time string into locale-specific hours and minutes.
+ * @ai-generated
+ * @param {string} value - Time string.
+ * @returns {string}
+ */
 function formatTime(value) {
   if (!value) return '--';
   if (value.includes(':')) {
@@ -629,6 +856,13 @@ function formatTime(value) {
   return value;
 }
 
+/**
+ * Generates trailing ISO dates ending on the supplied date.
+ * @ai-generated
+ * @param {string} endDate - End date string.
+ * @param {number} totalDays - Number of dates to generate.
+ * @returns {Array<string>}
+ */
 function getTrailingDates(endDate, totalDays) {
   const end = new Date(`${normalizeDate(endDate)}T00:00:00`);
   const dates = [];
@@ -640,23 +874,51 @@ function getTrailingDates(endDate, totalDays) {
   return dates;
 }
 
+/**
+ * Converts a Date object to a local YYYY-MM-DD string.
+ * @ai-generated
+ * @param {Date} date - JavaScript Date instance.
+ * @returns {string}
+ */
 function localIsoFromDate(date) {
   const offset = date.getTimezoneOffset();
   return new Date(date.getTime() - offset * 60000).toISOString().split('T')[0];
 }
 
+/**
+ * Compares two date/time pairs chronologically.
+ * @ai-generated
+ * @param {string} dateA - First date string.
+ * @param {string} timeA - First time string.
+ * @param {string} dateB - Second date string.
+ * @param {string} timeB - Second time string.
+ * @returns {number}
+ */
 function compareDateTime(dateA, timeA, dateB, timeB) {
   const first = new Date(`${normalizeDate(dateA)}T${timeA || '00:00:00'}`).getTime();
   const second = new Date(`${normalizeDate(dateB)}T${timeB || '00:00:00'}`).getTime();
   return first - second;
 }
 
+/**
+ * Calculates whole day difference between two dates.
+ * @ai-generated
+ * @param {string} dateA - First date string.
+ * @param {string} dateB - Second date string.
+ * @returns {number}
+ */
 function daysBetween(dateA, dateB) {
   const first = new Date(`${normalizeDate(dateA)}T00:00:00`);
   const second = new Date(`${normalizeDate(dateB)}T00:00:00`);
   return Math.round((second - first) / 86400000);
 }
 
+/**
+ * Fetches JSON from the specified endpoint using the dashboard auth token.
+ * @ai-generated
+ * @param {string} url - API endpoint URL.
+ * @returns {Promise<any>}
+ */
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
@@ -671,6 +933,13 @@ async function fetchJson(url) {
   return response.json();
 }
 
+/**
+ * Returns HTML markup for a dashboard quick stat chip.
+ * @ai-generated
+ * @param {string} label - Label text.
+ * @param {string|number} value - Value to display.
+ * @returns {string}
+ */
 function quickStatMarkup(label, value) {
   return `
     <div class="dashboard-stat-chip">
@@ -680,6 +949,14 @@ function quickStatMarkup(label, value) {
   `;
 }
 
+/**
+ * Returns HTML markup for a legend item.
+ * @ai-generated
+ * @param {string} label - Legend label.
+ * @param {string|number} value - Value text.
+ * @param {string} tone - CSS tone class.
+ * @returns {string}
+ */
 function legendMarkup(label, value, tone) {
   return `
     <div class="legend-item ${escapeHtml(tone)}">
@@ -690,6 +967,13 @@ function legendMarkup(label, value, tone) {
   `;
 }
 
+/**
+ * Returns HTML markup for a role focus card.
+ * @ai-generated
+ * @param {string} title - Card title.
+ * @param {string} body - Card body text.
+ * @returns {string}
+ */
 function roleCardMarkup(title, body) {
   return `
     <div class="list-card">
@@ -699,6 +983,14 @@ function roleCardMarkup(title, body) {
   `;
 }
 
+/**
+ * Returns HTML markup for a metric card.
+ * @ai-generated
+ * @param {string} label - Metric label.
+ * @param {string|number} value - Metric value.
+ * @param {string} footnote - Metric footnote text.
+ * @returns {string}
+ */
 function metricCardMarkup(label, value, footnote) {
   return `
     <div class="metric-card glass-panel">
@@ -709,6 +1001,12 @@ function metricCardMarkup(label, value, footnote) {
   `;
 }
 
+/**
+ * Escapes a value for safe HTML output.
+ * @ai-generated
+ * @param {string|number} value - Value to escape.
+ * @returns {string}
+ */
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

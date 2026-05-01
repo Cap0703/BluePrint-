@@ -1,5 +1,20 @@
+/**
+ * public/js/auth.js
+ * Handles authentication state, token checks, navbar updates, and logout flow.
+ * @ai-generated
+ */
 let currentUser = null;
 
+/**
+ * Loads the current authenticated user from the server and redirects to login if the token is missing or invalid.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
+/**
+ * Loads the current authenticated user from the server and redirects to login if the token is missing or invalid.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function loadUserInfo() {
   try {
     const token = localStorage.getItem('auth_token');
@@ -29,6 +44,11 @@ async function loadUserInfo() {
   }
 }
 
+/**
+ * Adds the authenticated user's profile block to the navigation bar.
+ * @ai-generated
+ * @returns {void}
+ */
 function updateNavbarWithUser() {
   const navbar = document.querySelector('.navbar');
   if (!navbar) return;
@@ -64,6 +84,11 @@ function updateNavbarWithUser() {
   filterNavByRole();
 }
 
+/**
+ * Updates the navbar display based on the current user's role, hiding unauthorized links.
+ * @ai-generated
+ * @returns {void}
+ */
 function filterNavByRole() {
   if (!currentUser) return;
   if (currentUser.role === 'administrator') {
@@ -74,6 +99,11 @@ function filterNavByRole() {
     return;
   }
   window.currentUser = currentUser;
+  /**
+   * Hides links that are restricted for non-admin users.
+   * @ai-generated
+   * @returns {void}
+   */
   const hideLinks = () => {
     const protectedPages = ['admin', 'master_logs', 'scanners', 'app_settings'];
     let foundOne = false;
@@ -99,6 +129,11 @@ function filterNavByRole() {
   }
 }
 
+/**
+ * Sends a logout request to the server and clears client auth state.
+ * @ai-generated
+ * @returns {Promise<void>}
+ */
 async function logout() {
   try {
     const token = localStorage.getItem('auth_token');
