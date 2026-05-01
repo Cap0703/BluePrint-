@@ -18,7 +18,6 @@
 
 import 'dotenv/config';
 
-// ===== ADD THIS FOR DEBUGGING =====
 const DEBUG_WS = true;  // Set to false to disable verbose logging
 process.env.TZ = "America/Los_Angeles";
 

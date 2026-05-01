@@ -55,6 +55,8 @@ enum LedState {
   LED_OFFLINE
 };
 
+int currentErrorIndex = 0;
+
 // ========== NON-BLOCKING LED MANAGEMENT ==========
 LedState modeBaseLedState = LED_READY;  // BLUE for scanner, CYAN for enroll
 LedState currentLedState = LED_DISCONNECTED_WIFI;
@@ -210,11 +212,10 @@ void setDesiredLedState(LedState state) {
   }
 }
 
-void setLedTemporaryOverride(LedState state) {
-  // Temporary states: scan success, auth, offline
+void setLedTemporaryOverride(LedState state, unsigned long duration = LED_ERROR_DURATION) {
   ledOverrideActive = true;
   ledOverrideState = state;
-  ledOverrideUntil = millis() + LED_ERROR_DURATION;
+  ledOverrideUntil = millis() + duration;
   setLedBreathing(state);
 }
 
@@ -233,18 +234,22 @@ void updateLedStatus() {
   }
 
   // ---- Determine current connectivity issue ----
-  LedState errorState = LED_READY;
+  LedState errorStates[2];
+  int errorCount = 0;
 
+  // Build list of active errors
   if (!WifiConnected) {
-    errorState = LED_DISCONNECTED_WIFI;
-  } else if (!websocketConnected) {
-    errorState = LED_DISCONNECTED_WS;
+    errorStates[errorCount++] = LED_DISCONNECTED_WIFI;
+  }
+  if (WifiConnected && !websocketConnected) {
+    errorStates[errorCount++] = LED_DISCONNECTED_WS;
   }
 
-  bool hasError = (errorState != LED_READY);
+  bool hasError = (errorCount > 0);
 
   // ---- If NO error → always show normal mode ----
   if (!hasError) {
+    currentErrorIndex = 0;
     if (currentLedState != modeBaseLedState) {
       currentLedState = modeBaseLedState;
       setLedBreathing(modeBaseLedState);
@@ -270,15 +275,23 @@ void updateLedStatus() {
     }
   }
   else if (ledPhase == LED_PHASE_ERROR) {
-    // Show solid error color
-    if (currentLedState != errorState) {
-      currentLedState = errorState;
-      setLedSolidFlash(errorState);  // SOLID (not breathing)
+    LedState currentError = errorStates[currentErrorIndex];
+
+    if (currentLedState != currentError) {
+      currentLedState = currentError;
+      setLedSolidFlash(currentError);
     }
 
     if (now - ledPhaseStart >= LED_ERROR_DURATION) {
-      ledPhase = LED_PHASE_NORMAL;
       ledPhaseStart = now;
+
+      // Move to next error
+      currentErrorIndex++;
+
+      if (currentErrorIndex >= errorCount) {
+        currentErrorIndex = 0;
+        ledPhase = LED_PHASE_NORMAL; // go back to idle after cycling all
+      }
     }
   }
 }
@@ -1292,14 +1305,19 @@ void loop() {
     if (fingerID >= 0) {
       int studentID = findStudent(fingerID);
       if (studentID > 0) {
-        setLedTemporaryOverride(LED_SUCCESS);
+
+        static unsigned long lastScanTime = 0;
+        if (millis() - lastScanTime < 3000) return;
+        lastScanTime = millis();
+
+        setLedTemporaryOverride(LED_SUCCESS, 800);
+
         if (mode == "scanner") {
           pendingLog.studentID = studentID;
           strncpy(pendingLog.method, "fingerprint", sizeof(pendingLog.method) - 1);
           pendingLog.pending = true;
           sendOutput("Fingerprint Match - Logged attendance for Student " + String(studentID), -1);
         }
-        delay(3000);
       }
     }
   }
@@ -1423,7 +1441,7 @@ void handleNFCCardNonBlocking() {
         if (mode == "scanner" && isNumeric && nfcText.length() > 0) {
           int studentID = nfcText.toInt();
           clearNFCTag();
-          setLedTemporaryOverride(LED_SUCCESS);
+          setLedTemporaryOverride(LED_SUCCESS, 800);
           sendLog(studentID, "NFC");
           sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
         } else if (!isNumeric) {
