@@ -1800,6 +1800,50 @@ app.post('/api/scanner/decrypt', verifyToken, (req, res) => {
 });
 
 /**
+ * POST /api/scanner/log
+ * Accepts an encrypted NFC payload from a scanner, decrypts the student ID,
+ * and creates a log entry in one atomic operation.
+ * @access Authenticated (scanner)
+ * @body {{ encryptedData, iv, authTag, date, scanner_location, scanner_id, time_scanned, date_scanned }}
+ * @returns {201} Created log with the resolved student_id.
+ */
+app.post('/api/scanner/log', verifyToken, async (req, res) => {
+  const { encryptedData, iv, authTag, date,
+          scanner_location, scanner_id,
+          time_scanned, date_scanned } = req.body;
+
+  if (!encryptedData || !iv || !authTag || !date) {
+    return res.status(400).json({ error: 'Missing encrypted payload fields' });
+  }
+
+  let student_id;
+  try {
+    student_id = decrypt(encryptedData, iv, authTag, date);
+  } catch {
+    return res.status(400).json({ error: 'Decryption failed — tag may be expired or tampered' });
+  }
+
+  try {
+    const preparedLog = await buildPreparedLogEntry({
+      student_id,
+      scanner_location: scanner_location ?? req.user.scanner_id,
+      scanner_id:       scanner_id       ?? req.user.scanner_id,
+      time_scanned,
+      date_scanned,
+      method: 'nfc',
+      status: null
+    });
+    await insertPreparedLogEntry(preparedLog);
+    await assignPeriodsToLogs();
+    await assignStatusesToLogs();
+    res.status(201).json({ message: 'Log created', student_id });
+  } catch (err) {
+    console.error('[scanner/log]', err);
+    res.status(500).json({ error: err.message || 'Failed to save log' });
+  }
+});
+
+/**
  * POST /api/app/students/:id/reset_uuid
  * Clears the bound device UUID for a student, allowing them to log in from a new device.
  * @ai-generated
