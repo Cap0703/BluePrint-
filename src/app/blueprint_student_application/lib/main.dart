@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
-import 'package:nfc_manager/nfc_manager.dart';
+//import 'package:nfc_manager/nfc_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 void main() {
   runApp(const MyApp());
 }
+
+const _nfcChannel = MethodChannel('nfc/writer');
 
 Future<String> getUUID() async {
   final prefs  = await SharedPreferences.getInstance();
@@ -116,51 +119,72 @@ class HomeScreen extends StatelessWidget {
   final String studentID;
   const HomeScreen({super.key, required this.token, required this.studentID});
 
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('device_uuid');
+    if (context.mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SizedBox.expand (
-        child:Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/boo_background.png"),
-            fit: BoxFit.cover,
+      body: SizedBox.expand(
+        child: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage("assets/boo_background.png"),
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: SingleChildScrollView(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withAlpha(80),
+                    border: Border.all(
+                      width: 2,
+                      color: Colors.deepPurple.shade900,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      nfcScannerButtonEnable(studentID: studentID, token: token),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () => _logout(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade700,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 12,
+                          ),
+                          textStyle: const TextStyle(fontSize: 16),
+                        ),
+                        child: const Text('Logout'),
+                      ),
+                      const SizedBox(height: 40),
+                      const loginInstructionText(),
+                      const loginInstructionImage(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-      child: SingleChildScrollView(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey.withAlpha(80),
-              border: Border.all(
-                width: 2,
-                color: Colors.deepPurple.shade900,
-              ),
-
-              borderRadius: BorderRadius.circular(12),
-            ),
-                          child:Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                nfcScannerButtonEnable(studentID: studentID, token: token),
-                nfcScannerButtonDisable(),
-                const SizedBox(height: 40),
-                const loginInstructionText(),
-                const loginInstructionImage(),
-
-              ],
-            ),
-          )
-        ),
-      )
-      )
-    )
-    )
-  );
+      ),
+    );
   }
 }
 ///FingerprintLogoWidget
@@ -274,7 +298,7 @@ class ContinueButton extends StatelessWidget {
       "password": password,
       "uuid": uuID,
     }),
-    ); // breakpoint here
+    );
 
     if (response.statusCode == 200){
       final data = jsonDecode(response.body);
@@ -335,32 +359,39 @@ class ContinueButton extends StatelessWidget {
     );
   }
 }
-Future<String> getNFCMessage (String studentID, String token) async{
+Future<String> getNFCMessage(String studentID, String token) async {
   final url = Uri.parse("https://blueprint.boo/api/app/encrypt_student_id");
-  final response = await http.post(url,
+  final response = await http.post(
+    url,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer $token"
+      "Authorization": "Bearer $token",
     },
-    body: jsonEncode({
-      "student_id": studentID
-    }),
-    );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        String? encryptedID = data["encryptedData"];
-        if (encryptedID != null && encryptedID.isNotEmpty) {
-          print("Encrypted ID received: $encryptedID");
-          return encryptedID;
-        } else {
-          print("Encrypted ID missing in response");
-          return '';
-        }
-      } else {
-        print("Failed to get NFC message: ${response.statusCode}");
-        return '';
-      }
+    body: jsonEncode({"student_id": studentID}),
+  );
+
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+
+    final encryptedData = data["encryptedData"] as String?;
+    final iv            = data["iv"]            as String?;
+    final authTag       = data["authTag"]       as String?;
+    final date          = data["date"]          as String?;
+
+    if ([encryptedData, iv, authTag, date].any((f) => f == null || f.isEmpty)) {
+      print("Incomplete payload from server");
+      return '';
     }
+
+    final tagString = "$encryptedData|$iv|$authTag|$date";
+    print("Tag payload ready: $tagString");
+    return tagString;
+
+  } else {
+    print("Failed to get NFC message: ${response.statusCode}");
+    return '';
+  }
+}
 bool isScanning = false;
 bool cancelRequested = false;
 
@@ -368,134 +399,73 @@ void resetCancelCall(){
   cancelRequested = false;
 }
 
-Future<void> writeNFCTag(String message) async {
-  resetCancelCall();
-  isScanning = true;
-
-  print("NFC SESSION STARTED - TAP TAG NOW");
-
-  await NfcManager.instance.startSession(
-    pollingOptions: {NfcPollingOption.iso14443},
-    onDiscovered: (NfcTag tag) async {
-      print("TAG DETECTED");
-
-      if (cancelRequested) {
-        print("Session cancelled");
-        await NfcManager.instance.stopSession();
-        isScanning = false;
-        return;
-      }
-
-      try {
-        final ndef = Ndef.from(tag);
-
-        // ❌ No formatting support (since no NdefFormatable)
-        if (ndef == null) {
-          print("❌ TAG NOT NDEF FORMATTED - CANNOT WRITE");
-          await NfcManager.instance.stopSession();
-          isScanning = false;
-          return;
-        }
-
-        if (!ndef.isWritable) {
-          print("❌ TAG IS READ ONLY");
-          await NfcManager.instance.stopSession();
-          isScanning = false;
-          return;
-        }
-
-        print("WRITING TO TAG...");
-
-        final record = NdefRecord.createText(message);
-        final msg = NdefMessage([record]);
-
-        await ndef.write(msg);
-
-        print("✅ WRITE SUCCESS");
-
-      } catch (e) {
-        print("❌ WRITE FAILED: $e");
-      }
-
-      await NfcManager.instance.stopSession();
-      isScanning = false;
-    },
-  );
-}
-
-class nfcScannerButtonEnable extends StatelessWidget {
+class nfcScannerButtonEnable extends StatefulWidget {
   const nfcScannerButtonEnable({super.key, required this.studentID, required this.token});
-  
   final String studentID;
   final String token;
 
   @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: () async {
-        if(isScanning) {
-          print ("Scanner already active");
-          return;
-          
-        }
+  State<nfcScannerButtonEnable> createState() => _nfcScannerButtonEnableState();
+}
 
-        String message = await getNFCMessage(studentID, token);
-        
-        if (message.isNotEmpty){
-          await writeNFCTag(message);
-        }
-        else {
-          print("Message write request failed");
-        }
-        
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color.fromARGB(255, 57, 242, 16),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 40,
-          vertical: 20,
-        ),
-        textStyle: const TextStyle(fontSize: 18, color: Color.fromARGB(255, 5, 88, 7)),
-      ),
-      child: const Text('Open Scanner'),
+class _nfcScannerButtonEnableState extends State<nfcScannerButtonEnable> {
+  bool _isWriting = false;
+  String _buttonLabel = 'Write NFC Tag';
+
+  Future<void> _handleScan() async {
+    if (_isWriting) return;
+    setState(() {
+      _isWriting = true;
+      _buttonLabel = 'Waiting...';
+    });
+    try {
+      final message = await getNFCMessage(widget.studentID, widget.token);
+      if (message.isEmpty) {
+        _showSnack('Failed to get NFC message from server');
+        return;
+      }
+      final result = await _nfcChannel.invokeMethod<String>('writeNFC', message);
+      _showSnack(result == 'success' ? 'NFC tag written!' : 'Unexpected result');
+    } on PlatformException catch (e) {
+      final msg = e.message ?? '';
+      if (msg.toLowerCase().contains('cancel') || 
+          msg.toLowerCase().contains('invalidat') ||
+          msg.toLowerCase().contains('session')) {
+        _showSnack('NFC cancelled — tap the button to try again');
+      } else {
+        _showSnack('NFC Error: $msg');
+      }
+    } catch (e) {
+      _showSnack('Error: $e');
+    } finally {
+      setState(() {
+        _isWriting = false;
+        _buttonLabel = 'Write NFC Tag';
+      });
+    }
+  }
+
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
     );
-}
+  }
 
-
-
-
-}
-
-class nfcScannerButtonDisable extends StatelessWidget {
-  const nfcScannerButtonDisable({super.key});
-  
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: () {
-        if (isScanning) {
-          cancelRequested = true;
-          isScanning = false;
-          NfcManager.instance.stopSession();
-
-          
-          print("Close Scanner Button Pressed: Stop Requested");
-        }
-        
-      },
+      onPressed: _isWriting ? null : _handleScan,
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color.fromARGB(255, 255, 0, 0),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 40,
-          vertical: 20,
-        ),
-        textStyle: const TextStyle(fontSize: 18, color: Color.fromARGB(255, 92, 9, 9)),
-         
+        backgroundColor: _isWriting
+            ? Colors.grey
+            : const Color.fromARGB(255, 57, 242, 16),
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+        textStyle: const TextStyle(fontSize: 18),
       ),
-      child: const Text('Close Scanner'),
+      child: Text(_buttonLabel),
     );
-}
-
+  }
 }
 
 class loginInstructionText extends StatelessWidget {
