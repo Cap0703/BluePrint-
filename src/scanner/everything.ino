@@ -16,10 +16,12 @@
 #define FINGERPRINT_LED_WHITE 0x07
 
 // ========== CONFIGURATION ==========
-//const char ssid[] = "BraveWeb";
-//const char password[] = "Br@veW3b";
+//const char ssid[] = "NETGEAR54TP-Link_003Ext";
+//const char password[] = "PIN12205486";
 //const char ssid[] = "NETGEAR54";
 //const char password[] = "silentbird445";
+const char ssid[] = "BraveWeb";
+const char password[] = "Br@veW3b";
 
 WebSocketsClient webSocket;
 
@@ -95,10 +97,14 @@ Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 #define MAX_OFFLINE_LOGS 200
 
 struct OfflineLog {
-  int studentID;
+  int  studentID;
   char method[16];
   char date[11];
   char time[9];
+  char encryptedData[256];
+  char iv[64];
+  char authTag[64];
+  char nfcDate[11];
 };
 
 #define BUTTON_PIN 25
@@ -319,6 +325,8 @@ String readNFCNDEFText();
 void queueOfflineLog(int studentID, String method);
 void flushOfflineLogs();
 void updateLedStatus();
+int parseEnrollStudentID(String tagText);
+
 
 // ========== FINGERPRINT ==========
 void initializeFingerprint() {
@@ -404,9 +412,9 @@ void initializeNFC() {
 
 String readNFCNDEFText() {
   // Read pages 4-7 (NDEF message area on NTAG21x)
-  uint8_t buf[16];
+  uint8_t buf[96];
   int idx = 0;
-  for (int page = 4; page <= 7; page++) {
+  for (int page = 4; page <= 27; page++) {
     uint8_t pageData[4];
     if (nfc.ntag2xx_ReadPage(page, pageData)) {
       for (int i = 0; i < 4; i++) buf[idx++] = pageData[i];
@@ -761,6 +769,12 @@ void sendHeartbeat() {
   if (code != 200) {
     authToken = "";
   }
+  /*if (code == 401) {
+    Serial.println("[HEARTBEAT] 401 Unauthorized — clearing token, will reauth.");
+    authToken = "";
+  } else if (code != 200) {
+    Serial.printf("[HEARTBEAT] Non-200 response (%d) — keeping token.\n", code);
+  }*/
 
   http.end();
 }
@@ -1126,6 +1140,46 @@ void queueOfflineLog(int studentID, String method) {
                 studentID, method.c_str(), dateStr.c_str(), timeStr.c_str());
 }
 
+void queueOfflineNFCLog(String encryptedData, String iv, String authTag, String nfcDate,
+                        String dateScanned, String timeScanned) {
+  OfflineLog entry;
+  memset(&entry, 0, sizeof(entry));
+  entry.studentID = -1;
+  strncpy(entry.method,        "nfc",               sizeof(entry.method) - 1);
+  strncpy(entry.date,          dateScanned.c_str(),  sizeof(entry.date) - 1);
+  strncpy(entry.time,          timeScanned.c_str(),  sizeof(entry.time) - 1);
+  strncpy(entry.encryptedData, encryptedData.c_str(), sizeof(entry.encryptedData) - 1);
+  strncpy(entry.iv,            iv.c_str(),            sizeof(entry.iv) - 1);
+  strncpy(entry.authTag,       authTag.c_str(),        sizeof(entry.authTag) - 1);
+  strncpy(entry.nfcDate,       nfcDate.c_str(),        sizeof(entry.nfcDate) - 1);
+
+  // same append logic as queueOfflineLog — copy that block here
+  int count = 0;
+  File rf = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+  if (rf) { count = rf.size() / sizeof(OfflineLog); rf.close(); }
+
+  if (count >= MAX_OFFLINE_LOGS) {
+    OfflineLog* buf = (OfflineLog*)malloc(sizeof(OfflineLog) * MAX_OFFLINE_LOGS);
+    if (!buf) return;
+    File r2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_READ);
+    if (r2) { r2.read((uint8_t*)buf, sizeof(OfflineLog) * MAX_OFFLINE_LOGS); r2.close(); }
+    File w2 = LittleFS.open(OFFLINE_LOGS_FILE, FILE_WRITE);
+    if (w2) {
+      w2.write((uint8_t*)&buf[1], sizeof(OfflineLog) * (MAX_OFFLINE_LOGS - 1));
+      w2.write((uint8_t*)&entry, sizeof(OfflineLog));
+      w2.close();
+    }
+    free(buf);
+    return;
+  }
+
+  File f = LittleFS.open(OFFLINE_LOGS_FILE, FILE_APPEND);
+  if (!f) return;
+  f.write((uint8_t*)&entry, sizeof(OfflineLog));
+  f.close();
+  Serial.println("[OFFLINE] Queued NFC log (encrypted).");
+}
+
 void flushOfflineLogs() {
   if (!LittleFS.exists(OFFLINE_LOGS_FILE)) return;
 
@@ -1149,24 +1203,39 @@ void flushOfflineLogs() {
     HTTPClient http;
     http.setTimeout(10000);
 
-    if (!http.begin(client, String(serverEndpoint) + "/api/logs")) {
-      failed++; http.end(); continue;
-    }
+    bool isNFC = (strcmp(entry.method, "nfc") == 0);
+    String endpoint = isNFC
+    ? String(serverEndpoint) + "/api/scanner/log"
+    : String(serverEndpoint) + "/api/logs";
+
+    if (!http.begin(client, endpoint)) { failed++; http.end(); continue; }
 
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Authorization", "Bearer " + authToken);
 
-    StaticJsonDocument<256> doc;
-    doc["scanner_location"] = SCANNER_LOCATION;
-    doc["scanner_id"]       = SCANNER_ID;
-    doc["student_id"]       = entry.studentID;
-    doc["date_scanned"]     = entry.date;
-    doc["time_scanned"]     = entry.time;
-    doc["status"]           = "null";
-    doc["method"]           = entry.method;
-
     String body;
-    serializeJson(doc, body);
+    if (isNFC) {
+      StaticJsonDocument<512> doc;
+      doc["encryptedData"]    = entry.encryptedData;
+      doc["iv"]               = entry.iv;
+      doc["authTag"]          = entry.authTag;
+      doc["date"]             = entry.nfcDate;
+      doc["scanner_location"] = SCANNER_LOCATION;
+      doc["scanner_id"]       = SCANNER_ID;
+      doc["date_scanned"]     = entry.date;
+      doc["time_scanned"]     = entry.time;
+      serializeJson(doc, body);
+    } else {
+      StaticJsonDocument<256> doc;
+      doc["scanner_location"] = SCANNER_LOCATION;
+      doc["scanner_id"]       = SCANNER_ID;
+      doc["student_id"]       = entry.studentID;
+      doc["date_scanned"]     = entry.date;
+      doc["time_scanned"]     = entry.time;
+      doc["status"]           = "null";
+      doc["method"]           = entry.method;
+      serializeJson(doc, body);
+    }
 
     int code = http.POST(body);
     if (code == 201) { sent++; }
@@ -1250,29 +1319,49 @@ void loop() {
     webSocket.setReconnectInterval(5000);
   }
 
+  static unsigned long lastReauthAttempt = 0;
+  if (WifiConnected && authToken == "" && (millis() - lastReauthAttempt > 15000)) {
+    lastReauthAttempt = millis();
+    Serial.println("[AUTH] Token missing — attempting automatic re-auth...");
+    if (signIn()) {
+      flushOfflineLogs();
+      if (webSocket.isConnected()) {
+        StaticJsonDocument<256> doc;
+        doc["type"] = "auth";
+        doc["scannerId"] = scannerDbId;
+        doc["token"] = authToken;
+        String msg;
+        serializeJson(doc, msg);
+        webSocket.sendTXT(msg);
+      }
+    }
+  }
+
   // ========== LED STATUS UPDATE (NON-BLOCKING) ==========
   updateLedStatus();
 
-  // ========== NFC SCANNING (Scanner Mode Only) ==========
+  // ========== NFC SCANNING ==========
   if (mode == "scanner" || mode == "enroll") {
     static unsigned long nfcWindowStart = 0;
     static bool nfcActive = true;
+    static bool nfcNeedsReinit = false;
 
     if (nfcActive) {
-      if (millis() - lastNFCCheck >= NFC_CHECK_INTERVAL) {
-        lastNFCCheck = millis();
-        handleNFCCardNonBlocking();
-      }
+      handleNFCCardNonBlocking();
       if (millis() - nfcWindowStart >= 500) {
         nfcActive = false;
+        nfcNeedsReinit = true;      // flag the reset, don't do it yet
         nfcWindowStart = millis();
+      }
+    } else {
+      // Do the expensive I2C reset in small steps during the inactive window
+      if (nfcNeedsReinit && millis() - nfcWindowStart >= 100) {
         Wire.end();
-        //delay(50);
         Wire.begin(21, 22);
         nfc.begin();
         nfc.SAMConfig();
+        nfcNeedsReinit = false;
       }
-    } else {
       if (millis() - nfcWindowStart >= 2000) {
         nfcActive = true;
         nfcWindowStart = millis();
@@ -1372,66 +1461,148 @@ bool writeNFCText(String text) {
   return true;
 }
 
-void handleNFCCardNonBlocking() {
-  uint8_t uid[7];
-  uint8_t uidLength;
-  
-  bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
-  if (success) {
-    if (uidLength == 7) {   // NTAG21x series
-      String nfcText = readNFCNDEFText();
-      
-      if (nfcText.length() > 0) {
-        nfcText.trim();
-        bool isNumeric = true;
-        for (unsigned int i = 0; i < nfcText.length(); i++) {
-          if (!isdigit(nfcText[i])) { isNumeric = false; break; }
-        }
-        
-        // ── ENROLLMENT MODE: Use NFC to trigger enrollment ──
-        if (mode == "enroll" && isNumeric && nfcText.length() > 0) {
-          if (enrollmentActive) {
-            // Don't interrupt an in-progress enrollment
-            return;
-          }
-          int studentID = nfcText.toInt();
-          int slot = getNextFreeSlot();
-          
-          if (slot == -1) {
-            sendOutput("No free slots for NFC enrollment.", -1);
-            return;
-          }
-          
-          sendOutput("Starting enrollment for student " + String(studentID) + " (via NFC)...", -1);
-          wsFlush();
-          
-          uint8_t result = getFingerprintEnroll(slot, studentID);
-          
-          if (result == FINGERPRINT_OK) {
-            // Write confirmation to NFC
-            clearNFCTag();
-            sendOutput("✓ NFC enrollment successful!", -1);
-          } else {
-            sendOutput("✗ NFC enrollment failed.", -1);
-          }
-          delay(500);
-          return;
-        }
-        
-        // ── SCANNER MODE: Log attendance ──
-        if (mode == "scanner" && isNumeric && nfcText.length() > 0) {
-          int studentID = nfcText.toInt();
-          clearNFCTag();
-          setLedSuccess();
-          sendLog(studentID, "NFC");
-          sendOutput("NFC Scan - Logged attendance for Student " + String(studentID), -1);
-        } else if (!isNumeric) {
-          sendOutput("NFC Scan - Text on tag is not a numeric student ID: " + nfcText, -1);
-        }
+int parseEnrollStudentID(String tagText) {
+  tagText.trim();
+  bool numeric = true;
+  for (unsigned int i = 0; i < tagText.length(); i++) {
+    if (!isdigit(tagText[i])) {
+      numeric = false;
+      break;
+    }
+  }
+  if (numeric && tagText.length() > 0) return tagText.toInt();
+  int colon = tagText.indexOf(':');
+  if (colon >= 0) {
+    String value = tagText.substring(colon + 1);
+    value.trim();
+    bool valueNumeric = true;
+    for (unsigned int i = 0; i < value.length(); i++) {
+      if (!isdigit(value[i])) {
+        valueNumeric = false;
+        break;
       }
     }
-    
-    // Prevent repeated reads of the same card
-    delay(500);
+    if (valueNumeric && value.length() > 0) return value.toInt();
   }
+  return -1;
+}
+
+void handleNFCCardNonBlocking() {
+  unsigned long now = millis();
+  if (now - lastNFCCheck < NFC_CHECK_INTERVAL) return;
+  lastNFCCheck = now;
+
+  uint8_t uid[7];
+  uint8_t uidLen = 0;
+
+  if (!nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLen, 50)) return;
+
+  String tagText = readNFCNDEFText();
+  if (tagText.length() == 0) {
+    return;
+  }
+  tagText.trim();
+
+  if (mode == "enroll") {
+    if (enrollmentActive) return;
+
+    int studentID = parseEnrollStudentID(tagText);
+    if (studentID <= 0) {
+      return;
+    }
+
+    int slot = getNextFreeSlot();
+    if (slot == -1) {
+      handleStorageFull();
+      sendOutput("No free fingerprint slots.", -1);
+      return;
+    }
+
+    sendOutput("NFC enroll tag read. Starting enrollment for student " + String(studentID) + "...", -1);
+
+    // Clear/blank the tag so holding it near the reader does not retrigger another enrollment.
+    writeNFCText(" ");
+
+    uint8_t result = getFingerprintEnroll(slot, studentID);
+
+    if (result == FINGERPRINT_OK) {
+      sendOutput("Enrollment successful from NFC tag. Student " + String(studentID) + " saved to slot " + String(slot) + ".", -1);
+    } else {
+      sendOutput("Enrollment failed for NFC student " + String(studentID) + ".", -1);
+    }
+
+    return;
+  }
+  
+  String parts[4];
+  int partIndex = 0;
+  int start = 0;
+
+  for (int i = 0; i <= (int)tagText.length() && partIndex < 4; i++) {
+    if (i == (int)tagText.length() || tagText[i] == '|') {
+      parts[partIndex++] = tagText.substring(start, i);
+      start = i + 1;
+    }
+  }
+
+  if (partIndex < 4 || parts[0].length() == 0) {
+    return;
+  }
+
+  String encryptedData = parts[0];
+  String iv            = parts[1];
+  String authTag       = parts[2];
+  String date          = parts[3];
+
+  Serial.printf("[NFC] Got encrypted payload for date %s\n", date.c_str());
+  writeNFCText(" ");
+
+  // ── Get current date/time for the log ──
+  String dateStr, timeStr;
+  getDateTime(dateStr, timeStr);
+
+  // ── POST to /api/scanner/log ──
+  if (WiFi.status() != WL_CONNECTED || authToken == "") {
+    queueOfflineNFCLog(encryptedData, iv, authTag, date, dateStr, timeStr);
+    setLedSuccess();
+    return;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(8000);
+
+  if (!http.begin(client, String(serverEndpoint) + "/api/scanner/log")) {
+    http.end();
+    return;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + authToken);
+
+  StaticJsonDocument<512> doc;
+  doc["encryptedData"]    = encryptedData;
+  doc["iv"]               = iv;
+  doc["authTag"]          = authTag;
+  doc["date"]             = date;
+  doc["scanner_location"] = SCANNER_LOCATION;
+  doc["scanner_id"]       = SCANNER_ID;
+  doc["date_scanned"]     = dateStr;
+  doc["time_scanned"]     = timeStr;
+
+  String body;
+  serializeJson(doc, body);
+
+  int code = http.POST(body);
+  if (code == 201) {
+    Serial.println("[NFC] Log created successfully");
+    setLedSuccess();
+    sendOutput("NFC scan logged.", -1);
+  } else {
+    String resp = http.getString();
+    Serial.printf("[NFC] Server returned %d: %s\n", code, resp.c_str());
+    queueOfflineNFCLog(encryptedData, iv, authTag, date, dateStr, timeStr);
+  }
+  http.end();
 }
